@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>About — Community Map</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<style>
+  .wrap { max-width: var(--measure); margin: 0 auto; padding: var(--s-6) var(--s-4) 4rem; }
+  h1 { font-size: var(--t-display); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 var(--s-2); }
+  h2 { font-size: var(--t-h2); margin: var(--s-6) 0 var(--s-2); letter-spacing: -0.01em; }
+  p  { margin: 0 0 var(--s-3); }
+  .sub { color: var(--slate); }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-4); }
+  th { text-align: left; font-size: var(--t-label); letter-spacing: 0.09em; text-transform: uppercase;
+       color: var(--faint); font-weight: 700; padding: 0 var(--s-3) var(--s-1) 0;
+       border-bottom: 1px solid var(--hair); }
+  td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair); vertical-align: top; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="label"><a href="index.html">← Map</a></p>
+  <h1>About</h1>
+  <p class="sub">Every member of the community Slack channels, mapped, with how recently
+  they've been visible. Built for Team Comet, August 2026. Private.</p>
+
+  <h2>Statuses</h2>
+  <table>
+    <tr><th>Status</th><th>Last visible activity</th></tr>
+    <tr><td>active</td><td>30 days</td></tr>
+    <tr><td>new</td><td>joined within 90 days, nothing on record yet — welcome them</td></tr>
+    <tr><td>slowing</td><td>31–92 days</td></tr>
+    <tr><td>dormant</td><td>93–365 days — the people to check in on</td></tr>
+    <tr><td>inactive</td><td>over a year</td></tr>
+    <tr><td>unknown</td><td>nothing in the sources we read. The activity scan is still
+      running, so this number falls daily</td></tr>
+  </table>
+  <p>Same thresholds as the <a href="https://marutim.github.io/wp-events-dashboard/">meetup
+  dashboard</a>, so both tools agree on what "active" means.</p>
+
+  <h2>Roles</h2>
+  <table>
+    <tr><td>Event Supporter</td><td>Mentors event organizers, checks on dormant meetups,
+      can vet meetup applications.</td></tr>
+    <tr><td>Program Supporter</td><td>Reviews WordCamp and Meetup applications, interviews
+      lead organizers, works the Help Scout queue.</td></tr>
+    <tr><td>Program Manager</td><td>All of the above, plus site creation on WordCamp.org.</td></tr>
+    <tr><td>Community member</td><td>In the Slack channels, no official role.</td></tr>
+    <tr><td>Not on roster</td><td>Vetting applications or answering organizers without
+      being listed anywhere. Found by their work.</td></tr>
+  </table>
+
+  <h2>Where the data comes from</h2>
+  <table>
+    <tr><td>Identity</td><td>Make WP Slack accounts are created from WordPress.org accounts,
+      so the match between the two is exact, not guessed.</td></tr>
+    <tr><td>Activity</td><td>Per-person message search across every public channel,
+      thread replies included.</td></tr>
+    <tr><td>Supporter work</td><td>The application bot logs who processed each WordCamp and
+      Meetup application. Weekly mentor check-in replies count too.</td></tr>
+    <tr><td>Location</td><td>Each person's own WordPress.org profile, geocoded. No profile
+      location, no dot — nothing is guessed.</td></tr>
+  </table>
+
+  <h2>What it misses</h2>
+  <p>Help Scout tickets, private channels, and anything off Slack and WordPress.org. Someone
+  can be quiet here and busy elsewhere — the map tells you who to ask, not what's going on
+  in their life. When you know better than the data, click the person, hit
+  <strong>Update contributor</strong>, and say what you know. Corrections beat every
+  automated source and carry your name and reason.</p>
+</div>
+</body>
+</html>

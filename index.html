@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Community Map — who has gone quiet, and who is near them</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+<div class="app">
+
+  <header class="masthead">
+    <div>
+      <h1>Community Map</h1>
+      <p class="sub">Who has gone quiet, and who is near enough to reach them.
+        <a href="about.html" class="about-link">About this data</a></p>
+    </div>
+    <div class="spacer"></div>
+    <div class="counters" id="counters" aria-live="polite"></div>
+  </header>
+
+  <div class="controls">
+    <div class="group">
+      <span class="label">View</span>
+      <div class="seg" role="group" aria-label="View">
+        <button id="v-map"   aria-pressed="true">Map</button>
+        <button id="v-table" aria-pressed="false">Table</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label">Region</span>
+      <div class="seg" role="group" aria-label="Region">
+        <button id="r-us"     aria-pressed="true">United States</button>
+        <button id="r-global" aria-pressed="false">Global</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <span class="label">Who</span>
+      <div class="seg" role="group" aria-label="Population">
+        <button id="p-roster" aria-pressed="false"
+          title="People with an official Community Team role, plus people found doing the work without one.">Has a role</button>
+        <button id="p-all" aria-pressed="true"
+          title="Everyone in #community-events or #community-team on Make WordPress Slack.">Everyone in Slack</button>
+      </div>
+    </div>
+
+    <div class="group">
+      <label class="label" for="f-country">Country</label>
+      <select id="f-country" class="field"><option value="">All</option></select>
+    </div>
+
+    <div class="group">
+      <label class="label" for="f-status">Status</label>
+      <select id="f-status" class="field"><option value="">All</option></select>
+    </div>
+
+    <div class="group">
+      <label class="label" for="q">Search</label>
+      <input id="q" class="field" type="search" placeholder="Name, place, or handle" autocomplete="off">
+    </div>
+  </div>
+
+  <div class="stage" id="stage">
+    <div id="map" role="application" aria-label="Map of community supporters"></div>
+
+    <aside class="side" id="side">
+      <div class="state" id="side-state"><strong>Loading…</strong>Reading the dataset.</div>
+    </aside>
+
+    <div class="tablewrap" id="tablewrap" hidden>
+      <div class="tabletools">
+        <p class="label" id="tcount">—</p>
+        <div class="spacer"></div>
+        <div class="group">
+          <label class="label" for="f-rows">Rows</label>
+          <select id="f-rows" class="field">
+            <option>25</option><option selected>50</option><option>100</option>
+            <option>200</option><option>250</option>
+          </select>
+        </div>
+        <button class="btn" id="pg-prev" aria-label="Previous page">Prev</button>
+        <span class="label tabular" id="pg-label">1</span>
+        <button class="btn" id="pg-next" aria-label="Next page">Next</button>
+        <button class="btn primary" id="do-csv">Export CSV</button>
+      </div>
+      <div class="scroll">
+        <table id="tbl">
+          <thead><tr id="thead"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

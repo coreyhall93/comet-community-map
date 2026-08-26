@@ -176,18 +176,25 @@
   function initMap() {
     state.map = L.map("map", { worldCopyJump: true, zoomControl: true })
                  .setView([39.5, -98.35], 4);
-    // Basemap follows the viewer's theme; a light map under dark chrome glares.
-    var dark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
-    var tiles = L.tileLayer(
-      "https://{s}.basemaps.cartocdn.com/" + (dark ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png",
-      { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 18 });
-    tiles.addTo(state.map);
-    if (window.matchMedia) {
-      window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", function (e) {
-        tiles.setUrl("https://{s}.basemaps.cartocdn.com/" +
-          (e.matches ? "dark_all" : "light_all") + "/{z}/{x}/{y}{r}.png");
-      });
+    // Basemap: OpenStreetMap standard. CARTO's basemaps started requiring an
+    // API key and now stamp "API KEY REQUIRED" across every tile, which is not
+    // something to hand a team. OSM is keyless and unrestricted at this volume.
+    // Dark mode inverts the tiles in CSS rather than swapping to a dark style,
+    // because OSM standard has no dark variant.
+    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors", maxZoom: 18
+    }).addTo(state.map);
+
+    function syncTheme(isDark) {
+      var pane = state.map.getPane("tilePane");
+      if (pane) pane.classList.toggle("is-dark", !!isDark);
     }
+    if (window.matchMedia) {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      syncTheme(mq.matches);
+      mq.addEventListener("change", function (e) { syncTheme(e.matches); });
+    }
+
     state.layer = L.layerGroup().addTo(state.map);
   }
 
@@ -219,7 +226,18 @@
     });
 
     if (placed.length) {
-      state.map.fitBounds(L.latLngBounds(placed.map(function (p) { return [p.lat, p.lng]; })).pad(0.15));
+      // fitBounds against a pane Leaflet still measures as zero-height silently
+      // falls back to zoom 0, which is how a map of 637 United States dots ends
+      // up showing the whole globe. Fit once now and again after the browser has
+      // settled layout, so the result does not depend on load-timing luck.
+      var bounds = L.latLngBounds(placed.map(function (p) { return [p.lat, p.lng]; })).pad(0.15);
+      var fit = function () {
+        if (!state.map || state.selected) return;   // never fight a selection fly-to
+        state.map.invalidateSize(false);
+        state.map.fitBounds(bounds);
+      };
+      fit();
+      requestAnimationFrame(fit);
     }
   }
 

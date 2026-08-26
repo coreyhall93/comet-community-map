@@ -254,6 +254,11 @@ body {
 }
 a.btn { text-decoration: none; display: inline-block; }
 
+/* Dark mode for an OSM basemap. Inverting and rotating the hue turns the light
+   cartography into a dark one without a second tile source; the markers sit in
+   their own pane and are untouched. */
+.leaflet-pane.is-dark { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

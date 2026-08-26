@@ -343,6 +343,23 @@ a.btn { text-decoration: none; display: inline-block; }
 .chip.unknown.on  { background: #9AA2AD;           border-color: #9AA2AD; }
 .chip.new.on      { background: var(--st-new);     border-color: var(--st-new); }
 
+/* Automattician layer. A diamond, not another coloured circle: three layers on
+   one map have to survive colour-blindness and a greyscale screenshot, so the
+   distinction is carried by shape first and colour second. */
+.pin.a11n {
+  background: var(--accent); border: 1.5px solid rgba(255,255,255,0.95);
+  border-radius: 2px; transform: rotate(45deg);
+  box-shadow: 0 1px 3px rgba(16,24,40,0.3);
+}
+.cluster.a11n {
+  background: var(--accent); border-radius: 4px; transform: rotate(45deg);
+}
+.cluster.a11n > span { transform: rotate(-45deg); }
+
+.a11n-block { margin: var(--s-4) 0; padding-top: var(--s-3); border-top: 1px solid var(--hair); }
+.tag.a11n { background: var(--accent-soft); color: var(--accent); }
+.row.near.is-a11n .nm { font-weight: 550; }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

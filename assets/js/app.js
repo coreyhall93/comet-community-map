@@ -36,7 +36,8 @@
     data: null, view: "map", region: "us", pop: "all", q: "",
     country: "", status: "", rows: 50, page: 0,
     map: null, layer: null, selected: null,
-    radiusMi: 100, markers: {}, nearStatus: ""
+    radiusMi: 100, markers: {}, nearStatus: "",
+    showA11n: false, a11nLayer: null, a11n: []
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -303,6 +304,62 @@
     });
   }
 
+  /* Automattician overlay. Distinct SHAPE, not just a distinct colour: three
+   * colour-coded layers on one map fail for anyone colour-blind or reading a
+   * greyscale screenshot, so these are diamonds and community people are
+   * circles. Internal only -- see the note in build_data.py. */
+  function a11nKey(a) { return "a11n:" + a.name; }
+
+  function renderA11n() {
+    if (!state.map) return;
+    if (state.a11nLayer) { state.map.removeLayer(state.a11nLayer); state.a11nLayer = null; }
+    if (!state.showA11n || !state.a11n.length) return;
+
+    state.a11nLayer = L.markerClusterGroup({
+      maxClusterRadius: 45,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
+      iconCreateFunction: function (c) {
+        var n = c.getChildCount();
+        var size = n < 10 ? 28 : n < 50 ? 34 : 42;
+        return L.divIcon({
+          className: "",
+          html: '<div class="cluster a11n" style="width:' + size + "px;height:" + size +
+                'px"><span>' + n + "</span></div>",
+          iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+        });
+      }
+    });
+
+    state.a11n.forEach(function (a) {
+      var m = L.marker([a.lat, a.lng], {
+        icon: L.divIcon({
+          className: "",
+          html: '<div class="pin a11n"></div>',
+          iconSize: [11, 11], iconAnchor: [5.5, 5.5]
+        }),
+        title: a.name || a.role
+      });
+      m.bindPopup("<strong>" + esc(a.name || "Name not listed") + "</strong><br>" +
+                  esc(a.role) + '<br><span class="popup-def">Automattician</span>');
+      state.markers[a11nKey(a)] = m;
+      state.a11nLayer.addLayer(m);
+    });
+    state.a11nLayer.addTo(state.map);
+  }
+
+  /* Automatticians within the radius of a given person. This is the payoff the
+   * layer exists for: a quiet supporter with an Automattician half an hour away
+   * is a specific lead, not a statistic. */
+  function nearbyA11n(p) {
+    if (p.lat == null || !state.a11n.length) return [];
+    return state.a11n
+      .map(function (a) { return { p: a, d: distance(p, a) }; })
+      .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
+      .sort(function (x, y) { return x.d - y.d; });
+  }
+
   function renderMap(list) {
     if (!state.map) initMap();
     state.layer.clearLayers();
@@ -347,6 +404,7 @@
       fit();
       requestAnimationFrame(fit);
     }
+    renderA11n();
   }
 
   /* --- side panel: quiet people, and who is near them --------------------- */
@@ -585,6 +643,43 @@
     return '<div class="chips">' + chips + "</div>";
   }
 
+  /* Automatticians near this person, shown only while the layer is on. Kept as
+   * its own block rather than mixed into the list above, because they are a
+   * different kind of thing: no activity status, and reachable for a different
+   * reason -- they are staff who can be asked to make contact. */
+  function a11nHTML(p) {
+    if (!state.showA11n || p.lat == null) return "";
+    var near = nearbyA11n(p);
+    if (!near.length) {
+      return '<div class="a11n-block"><p class="label">Automatticians nearby</p>' +
+        '<div class="state">None within ' + state.radiusMi + " miles.</div></div>";
+    }
+    // Named people first at equal distance: an unnamed dot still counts toward
+    // "is there anyone near here", but only a named one can actually be asked.
+    var named = near.filter(function (h) { return (h.p.name || "").trim(); });
+    var anon = near.length - named.length;
+    var show = named.slice(0, 5);
+
+    return '<div class="a11n-block">' +
+      '<p class="label">Automatticians nearby · ' + near.length + "</p>" +
+      (show.length
+        ? '<div class="nearlist">' + show.map(function (h) {
+            return '<div class="row near is-a11n" data-name="' + esc(h.p.name) +
+                '" data-key="' + esc(a11nKey(h.p)) + '">' +
+              '<div class="nm">' + esc(h.p.name) + ' <span class="tag a11n">a8c</span></div>' +
+              '<div class="meta">' + esc(h.p.role) + "</div>" +
+              '<div class="meta"><strong>' + km(h.d) + "</strong> away</div>" +
+            "</div>";
+          }).join("") + "</div>"
+        : "") +
+      (named.length > 5 ? '<p class="hint">' + (named.length - 5) +
+        " more named within range.</p>" : "") +
+      (anon ? '<p class="hint subtle">' + anon + " more " +
+        (anon === 1 ? "is" : "are") + " in range but not named on automattic.com/map, " +
+        "so they are counted here and not listed.</p>" : "") +
+      "</div>";
+  }
+
   function nearHTML(p, list) {
     if (p.lat == null) {
       return '<p class="label">Who is nearby</p>' +
@@ -606,10 +701,10 @@
         "</div>";
     }
     if (!rows.length) {
-      return head + '<div class="state">Nobody ' + esc(state.nearStatus) +
+      return head + a11nHTML(p) + '<div class="state">Nobody ' + esc(state.nearStatus) +
              " within " + state.radiusMi + " miles. Clear the filter to see everyone.</div>";
     }
-    return head +
+    return head + a11nHTML(p) +
       '<p class="hint">Nearest first. Hover a name to find them on the map.</p>' +
       '<div class="nearlist">' + rows.map(function (h) {
         return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
@@ -816,6 +911,7 @@
 
   function boot(data) {
     state.data = data;
+    state.a11n = data.automatticians || [];
     applyEdits(data.people);
     document.title = "Community Map — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
@@ -835,6 +931,12 @@
     $("f-country").onchange = function (e) { state.country = e.target.value; state.page = 0; render(); };
     $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
+    $("l-a11n").onclick = function () {
+      state.showA11n = !state.showA11n;
+      $("l-a11n").setAttribute("aria-pressed", state.showA11n ? "true" : "false");
+      renderA11n();
+      renderSide(visible());   // the nearby panel gains or loses its a11n section
+    };
 
     $("pg-prev").onclick    = function () { state.page--; renderTable(visible()); };
     $("pg-next").onclick    = function () { state.page++; renderTable(visible()); };

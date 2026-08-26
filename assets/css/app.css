@@ -234,6 +234,26 @@ body {
 .row .meta { font-size: var(--t-small); color: var(--slate); }
 .hint { font-size: var(--t-small); color: var(--faint); margin: 0 0 var(--s-3); }
 
+/* Closest-active block inside a person's detail view. Rows reuse .row wholesale
+   (hover, hairline, pointer) so a nearby person behaves exactly like a person
+   in any other list -- clicking one selects them and moves the map. */
+.detail .label { margin-top: var(--s-5); }
+.nearlist { margin-top: var(--s-2); }
+.nearlist .row .meta strong { color: var(--ink); font-weight: 600; }
+
+/* Correction hand-off. Numbered because it is a procedure someone follows once
+   and should not have to reread -- prose would make them hunt for the steps. */
+.editor h3 { font-size: var(--t-body); margin: 0 0 var(--s-2); }
+.steps { margin: 0 0 var(--s-3); padding-left: 1.15rem; }
+.steps li { font-size: var(--t-small); color: var(--slate); margin-bottom: var(--s-2); line-height: 1.5; }
+.steps li strong { color: var(--ink); font-weight: 600; }
+.steps code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em; background: var(--tint); padding: 0.1rem 0.35rem; border-radius: 4px;
+  color: var(--ink);
+}
+a.btn { text-decoration: none; display: inline-block; }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

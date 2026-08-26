@@ -31,6 +31,13 @@
     map: null, layer: null, selected: null
   };
 
+  /* The team's edit surface. The in-page editor used to write to localStorage,
+   * which looked like a save and reached nobody -- three people correcting
+   * three different contributors produced three private copies. The Sheet is
+   * the one path that actually reaches the dataset: build/sync_sheet.py merges
+   * it into overrides.json, which wins over every source at build time. */
+  var SHEET_URL = "https://docs.google.com/spreadsheets/d/13DAShMlFl57xbUqB9Hwhp7iRdXp_A2Hr6EkooL1yO2I/edit";
+
   var $ = function (id) { return document.getElementById(id); };
 
   /* --- local overrides ---------------------------------------------------
@@ -91,6 +98,21 @@
     var h = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.sin(dLng / 2) * Math.sin(dLng / 2) * Math.cos(la1) * Math.cos(la2);
     return Math.round(2 * R * Math.asin(Math.sqrt(h)));
+  }
+
+  /* Closest active people to a given person, nearest first.
+   * The list view already showed a single nearest name; the detail view needs
+   * a few, because "who do I ask to reach this person" usually has more than
+   * one answer and the second choice matters when the first is a stranger. */
+  function nearestActive(p, list, n) {
+    if (p.lat == null) return [];
+    return list
+      .filter(function (a) {
+        return a.status === "active" && a.lat != null && keyOf(a) !== keyOf(p);
+      })
+      .map(function (a) { return { p: a, d: distance(p, a) }; })
+      .sort(function (x, y) { return x.d - y.d; })
+      .slice(0, n || 3);
   }
 
   function slackLink(p) {
@@ -207,7 +229,7 @@
     var side = $("side");
 
     if (state.selected) {
-      side.innerHTML = detailHTML(state.selected) +
+      side.innerHTML = detailHTML(state.selected, list) +
         (state.editing ? editorHTML(state.selected) : "") + pendingHTML();
       wireDetail(state.selected, list);
       wirePending();
@@ -369,7 +391,7 @@
 
   /* --- orchestration ----------------------------------------------------- */
 
-  function detailHTML(p) {
+  function detailHTML(p, list) {
     var src = [];
     if (p.messages) src.push(p.messages.toLocaleString() + " message" + (p.messages === 1 ? "" : "s") + " across all channels");
     if (p.posts)    src.push(p.posts + " in the supporter channel");
@@ -394,54 +416,95 @@
         (p.org ? "<dt>.org</dt><dd>" + link(orgLink(p), p.org) + "</dd>" : "") +
         (p.override && p.override.why ? "<dt>Why corrected</dt><dd>" + esc(p.override.why) + "</dd>" : "") +
       "</dl>" +
+      nearHTML(p, list) +
       '<div class="btnrow">' +
-        '<button class="btn primary" id="do-edit">Update contributor</button>' +
+        '<button class="btn primary" id="do-edit">Suggest a correction</button>' +
         '<button class="btn" id="do-back">Back to list</button>' +
       "</div>" +
     "</div>";
   }
 
+  function nearHTML(p, list) {
+    if (p.lat == null) {
+      return '<p class="label">Who is nearby</p>' +
+        '<div class="state">This person has no location on record, so proximity ' +
+        "cannot be worked out. Correcting their location puts them on the map.</div>";
+    }
+    var near = nearestActive(p, list, 3);
+    if (!near.length) {
+      return '<p class="label">Who is nearby</p>' +
+        '<div class="state">No active person in this view has a location. ' +
+        "Widen the filters to search a bigger pool.</div>";
+    }
+    return '<p class="label">Closest active people</p>' +
+      '<p class="hint">Nearest first. Any of these is a plausible person to make ' +
+      "the reintroduction.</p>" +
+      '<div class="nearlist">' + near.map(function (h) {
+        return '<div class="row near" data-name="' + esc(h.p.name) + '">' +
+          '<div class="nm">' + esc(h.p.name) +
+            ' <span class="tag ' + h.p.status + '">' + h.p.status + "</span></div>" +
+          '<div class="meta">' + roleHTML(h.p.role) +
+            (h.p.employer ? " · " + esc(h.p.employer) : "") + "</div>" +
+          '<div class="meta">' + esc(h.p.city || h.p.country || "location not on record") +
+            " · <strong>" + km(h.d) + "</strong> away</div>" +
+        "</div>";
+      }).join("") + "</div>";
+  }
+
   function editorHTML(p) {
-    var opts = STATUS.map(function (s) {
-      return '<option value="' + s + '"' + (s === p.status ? " selected" : "") + ">" + s + "</option>";
-    }).join("");
+    var key = keyOf(p);
     return '<div class="editor">' +
-      '<div><label for="e-status">Status</label>' +
-        '<select id="e-status" class="field">' + opts + "</select></div>" +
-      '<div><label for="e-city">Location</label>' +
-        '<input id="e-city" class="field" value="' + esc(p.city || "") + '" placeholder="City, Country"></div>' +
-      '<div><label for="e-why">Why (required — an override with no reason reads as a mistake later)</label>' +
-        '<textarea id="e-why" class="field" placeholder="What do you know that the data does not?"></textarea></div>' +
+      "<h3>Suggest a correction</h3>" +
+      '<p class="hint">Corrections are made in the shared Google Sheet, not on ' +
+      "this page. That is deliberate: the Sheet is the only place an edit reaches " +
+      "everyone. Anything typed here would live in your browser alone.</p>" +
+      '<ol class="steps">' +
+        "<li>Open the Sheet and find the row with <code>" + esc(key) + "</code> in the " +
+          "<strong>key</strong> column.</li>" +
+        "<li>Fill in <strong>SET STATUS</strong> or <strong>SET LOCATION</strong> " +
+          "(or both).</li>" +
+        "<li>Put your name in <strong>BY</strong>, and say what you know in " +
+          "<strong>WHY</strong>. A correction with no reason is skipped, because " +
+          "six months from now it is indistinguishable from a mistake.</li>" +
+      "</ol>" +
       '<div class="btnrow">' +
-        '<button class="btn primary" id="e-save">Save</button>' +
-        '<button class="btn" id="e-cancel">Cancel</button>' +
+        '<a class="btn primary" href="' + SHEET_URL + '" target="_blank" ' +
+          'rel="noreferrer noopener">Open the Sheet</a>' +
+        '<button class="btn" id="e-cancel">Close</button>' +
       "</div></div>";
   }
 
-  function select(p, list) { state.selected = p; state.editing = false; renderSide(list); }
+  /* Zoom close enough to read the surroundings, not so close the neighbours
+   * fall off the screen -- the point of selecting someone is seeing who is
+   * around them. Never zooms out if the viewer is already closer in. */
+  var FOCUS_ZOOM = 8;
+
+  function focusOnMap(p) {
+    if (!state.map || p.lat == null) return;
+    state.map.flyTo([p.lat, p.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM),
+                    { duration: 0.6 });
+  }
+
+  function select(p, list) {
+    state.selected = p;
+    state.editing = false;
+    focusOnMap(p);
+    renderSide(list);
+  }
 
   function wireDetail(p, list) {
+    Array.prototype.forEach.call(document.querySelectorAll("#side .row.near"), function (el) {
+      el.onclick = function () {
+        var hit = null;
+        list.forEach(function (q) { if (q.name === el.dataset.name) hit = q; });
+        if (hit) select(hit, list);
+      };
+    });
+
     var b = $("do-back"), e = $("do-edit");
     if (b) b.onclick = function () { state.selected = null; state.editing = false; renderSide(visible()); };
     if (e) e.onclick = function () { state.editing = true; renderSide(visible()); };
 
-    var save = $("e-save");
-    if (save) save.onclick = function () {
-      var why = $("e-why").value.trim();
-      if (!why) { $("e-why").focus(); return; }
-      var edits = loadEdits();
-      edits[keyOf(p)] = {
-        status: $("e-status").value,
-        city: $("e-city").value.trim(),
-        by: "corey", at: new Date().toISOString().slice(0, 10), why: why
-      };
-      saveEdits(edits);
-      p.status = edits[keyOf(p)].status;
-      p.city = edits[keyOf(p)].city;
-      p.locallyEdited = true;
-      state.editing = false;
-      render();
-    };
     var cancel = $("e-cancel");
     if (cancel) cancel.onclick = function () { state.editing = false; renderSide(visible()); };
   }

@@ -4,74 +4,219 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>About — Community Map</title>
+<title>Docs — Community Map</title>
 <link rel="stylesheet" href="assets/css/app.css">
 <style>
-  .wrap { max-width: var(--measure); margin: 0 auto; padding: var(--s-6) var(--s-4) 4rem; }
+  .wrap { max-width: var(--measure); margin: 0 auto; padding: var(--s-6) var(--s-4) 5rem; }
   h1 { font-size: var(--t-display); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 var(--s-2); }
-  h2 { font-size: var(--t-h2); margin: var(--s-6) 0 var(--s-2); letter-spacing: -0.01em; }
+  h2 { font-size: var(--t-h2); margin: var(--s-7) 0 var(--s-2); letter-spacing: -0.01em; }
+  h3 { font-size: var(--t-body); margin: var(--s-5) 0 var(--s-2); }
   p  { margin: 0 0 var(--s-3); }
-  .sub { color: var(--slate); }
+  .sub { color: var(--slate); font-size: var(--t-h3); line-height: 1.5; }
   a { color: var(--accent); text-decoration: none; }
   a:hover { text-decoration: underline; }
   table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-4); }
   th { text-align: left; font-size: var(--t-label); letter-spacing: 0.09em; text-transform: uppercase;
        color: var(--faint); font-weight: 700; padding: 0 var(--s-3) var(--s-1) 0;
        border-bottom: 1px solid var(--hair); }
-  td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair); vertical-align: top; }
+  td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair);
+       vertical-align: top; font-size: var(--t-small); }
+  td:first-child { white-space: nowrap; font-weight: 550; color: var(--ink); }
+  td.wrap-first:first-child { white-space: normal; }
+
+  /* Table of contents. Flat list of anchors -- this page is read by someone
+     hunting one answer, not front to back. */
+  .toc { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4);
+         padding: var(--s-3) 0; border-top: 1px solid var(--hair);
+         border-bottom: 1px solid var(--hair); margin-bottom: var(--s-5); }
+  .toc a { font-size: var(--t-small); }
+
+  /* Callout. No coloured rail -- weight and ground do the work. */
+  .note { background: var(--tint); border-radius: 10px; padding: var(--s-3) var(--s-4);
+          margin: 0 0 var(--s-4); font-size: var(--t-small); color: var(--slate); }
+  .note strong { color: var(--ink); }
+
+  pre { background: var(--tint); border-radius: 10px; padding: var(--s-4);
+        overflow-x: auto; margin: 0 0 var(--s-3); }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86rem;
+         color: var(--ink); }
+  p code, li code, td code { background: var(--tint); padding: 0.1rem 0.35rem; border-radius: 4px; }
+  ol, ul { margin: 0 0 var(--s-4); padding-left: 1.2rem; }
+  li { margin-bottom: var(--s-2); font-size: var(--t-small); color: var(--slate); line-height: 1.55; }
+  li strong { color: var(--ink); }
 </style>
 </head>
 <body>
 <div class="wrap">
   <p class="label"><a href="index.html">← Map</a></p>
-  <h1>About</h1>
-  <p class="sub">Every member of the community Slack channels, mapped, with how recently
-  they've been visible. Built for Team Comet, August 2026. Private.</p>
+  <h1>Community Map</h1>
+  <p class="sub">Who in the WordPress community has gone quiet, and who active is near
+  enough to reach them.</p>
 
-  <h2>Statuses</h2>
+  <nav class="toc">
+    <a href="#what">What this is</a>
+    <a href="#read">How to read it</a>
+    <a href="#roles">Roles</a>
+    <a href="#data">Where the data comes from</a>
+    <a href="#limits">What it cannot see</a>
+    <a href="#fix">Correcting something</a>
+    <a href="#claude">Using it with Claude</a>
+  </nav>
+
+  <h2 id="what">What this is</h2>
+  <p>Every member of the two Make WordPress community Slack channels, joined to their
+  WordPress.org profile, placed on a map, and labelled with how recently they have been
+  visible. Select anyone and the panel shows the closest <em>active</em> people to them.</p>
+  <p>The point is proximity. A dormant supporter with an active one an hour away is a
+  specific, actionable lead in a way that a list of names is not.</p>
+  <div class="note">
+    <strong>This is a re-engagement tool, not a scoreboard.</strong> It exists to find people
+    worth checking in on. It is private, it names individuals, and it must not be shared
+    outside the team or published anywhere public.
+  </div>
+
+  <h3>The three groups</h3>
   <table>
-    <tr><th>Status</th><th>Last visible activity</th></tr>
-    <tr><td>active</td><td>30 days</td></tr>
-    <tr><td>new</td><td>joined within 90 days, nothing on record yet — welcome them</td></tr>
+    <tr><th>Group</th><th>Who</th><th>Count</th></tr>
+    <tr><td>Roster</td><td>Official Event Supporters, Program Supporters and Program
+      Managers from the Community Team page</td><td>80</td></tr>
+    <tr><td>Found</td><td>People doing supporter work who are on no roster. Found by their
+      work, not their title</td><td>16</td></tr>
+    <tr><td>Community</td><td>Everyone else in <code>#community-events</code> or
+      <code>#community-team</code></td><td>6,944</td></tr>
+  </table>
+
+  <h2 id="read">How to read it</h2>
+  <h3>Status</h3>
+  <table>
+    <tr><th>Status</th><th>Means</th></tr>
+    <tr><td>active</td><td>Posted in the last 30 days</td></tr>
+    <tr><td>new</td><td>Joined within 90 days with nothing on record yet. Welcome them,
+      do not chase them</td></tr>
     <tr><td>slowing</td><td>31–92 days</td></tr>
-    <tr><td>dormant</td><td>93–365 days — the people to check in on</td></tr>
-    <tr><td>inactive</td><td>over a year</td></tr>
-    <tr><td>unknown</td><td>nothing in the sources we read. The activity scan is still
-      running, so this number falls daily</td></tr>
+    <tr><td>dormant</td><td>93–365 days. <strong>The people this tool is for</strong></td></tr>
+    <tr><td>inactive</td><td>Over a year. Reachable in principle, much less so in practice</td></tr>
+    <tr><td>unknown</td><td>We searched their whole Slack history and found nothing.
+      See the caveat below before reading anything into it</td></tr>
   </table>
-  <p>Same thresholds as the <a href="https://marutim.github.io/wp-events-dashboard/">meetup
-  dashboard</a>, so both tools agree on what "active" means.</p>
+  <p>These are the same thresholds the
+  <a href="https://marutim.github.io/wp-events-dashboard/" target="_blank" rel="noreferrer noopener">meetup
+  dashboard</a> uses, so both tools agree on what "active" means.</p>
 
-  <h2>Roles</h2>
+  <div class="note">
+    <strong>"Unknown" is not a synonym for inactive.</strong> All 7,017 people were scanned.
+    2,762 simply have no message our account can see. That is mostly people who joined the
+    channels and read without posting, plus anyone whose conversations happen in private
+    channels we are not in. Treat it as "no evidence either way," never as "gone."
+  </div>
+
+  <h3>The map</h3>
   <table>
-    <tr><td>Event Supporter</td><td>Mentors event organizers, checks on dormant meetups,
-      can vet meetup applications.</td></tr>
-    <tr><td>Program Supporter</td><td>Reviews WordCamp and Meetup applications, interviews
-      lead organizers, works the Help Scout queue.</td></tr>
-    <tr><td>Program Manager</td><td>All of the above, plus site creation on WordCamp.org.</td></tr>
-    <tr><td>Community member</td><td>In the Slack channels, no official role.</td></tr>
-    <tr><td>Not on roster</td><td>Vetting applications or answering organizers without
-      being listed anywhere. Found by their work.</td></tr>
+    <tr><td>Solid dot</td><td>A real city from their profile</td></tr>
+    <tr><td>Hollow dot</td><td>A country only. They wrote "Germany," so the dot sits at the
+      middle of Germany and means nothing more precise</td></tr>
+    <tr><td>Bigger dot</td><td>Someone holding an official role</td></tr>
+    <tr><td>Not on the map</td><td>4,176 people. Their profile has no location. They are
+      still in the table and the counts</td></tr>
+  </table>
+  <p>Selecting a person zooms to them so you can see who surrounds them. Clicking any of
+  their nearby people selects that person in turn.</p>
+
+  <h2 id="roles">Roles</h2>
+  <table>
+    <tr><td class="wrap-first">Event Supporter</td><td>Mentors event organizers, checks on
+      dormant meetups, can vet meetup applications.</td></tr>
+    <tr><td class="wrap-first">Program Supporter</td><td>Reviews WordCamp and Meetup
+      applications, interviews lead organizers, works the Help Scout queue.</td></tr>
+    <tr><td class="wrap-first">Program Manager</td><td>All of the above, plus site creation
+      on WordCamp.org.</td></tr>
+    <tr><td class="wrap-first">Community member</td><td>In the channels, no official role.</td></tr>
+    <tr><td class="wrap-first">Not on roster</td><td>Vetting applications or answering
+      organizers without being listed anywhere.</td></tr>
   </table>
 
-  <h2>Where the data comes from</h2>
+  <h2 id="data">Where the data comes from</h2>
   <table>
-    <tr><td>Identity</td><td>Make WP Slack accounts are created from WordPress.org accounts,
-      so the match between the two is exact, not guessed.</td></tr>
-    <tr><td>Activity</td><td>Per-person message search across every public channel,
-      thread replies included.</td></tr>
-    <tr><td>Supporter work</td><td>The application bot logs who processed each WordCamp and
-      Meetup application. Weekly mentor check-in replies count too.</td></tr>
+    <tr><th>Signal</th><th>Source</th></tr>
+    <tr><td>Identity</td><td>A Make WP Slack account's email is
+      <code>&lt;org-username&gt;@chat.wordpress.org</code>, so the join between Slack and
+      WordPress.org is exact. No name matching, no guessing.</td></tr>
+    <tr><td>Membership</td><td>Full member enumeration of
+      <code>#community-events</code> and <code>#community-team</code>.</td></tr>
+    <tr><td>Activity</td><td>A per-person message search across every channel our account
+      can see, thread replies included.</td></tr>
+    <tr><td>Supporter work</td><td>The application bot's log of who processed each WordCamp
+      and Meetup application, plus weekly mentor check-in replies.</td></tr>
     <tr><td>Location</td><td>Each person's own WordPress.org profile, geocoded. No profile
-      location, no dot — nothing is guessed.</td></tr>
+      location, no dot. Nothing is inferred.</td></tr>
   </table>
 
-  <h2>What it misses</h2>
-  <p>Help Scout tickets, private channels, and anything off Slack and WordPress.org. Someone
-  can be quiet here and busy elsewhere — the map tells you who to ask, not what's going on
-  in their life. When you know better than the data, click the person, hit
-  <strong>Update contributor</strong>, and say what you know. Corrections beat every
-  automated source and carry your name and reason.</p>
+  <h2 id="limits">What it cannot see</h2>
+  <ul>
+    <li><strong>Help Scout.</strong> Ticket work is invisible here. Someone can be quiet in
+      Slack and carrying the support queue. This is the biggest known gap.</li>
+    <li><strong>Private channels we are not in.</strong> Activity there reads as silence.</li>
+    <li><strong>Anything off Slack and WordPress.org.</strong> GitHub, WordCamp organising,
+      Meetup.com, and real life.</li>
+    <li><strong>Location, for 4,176 people.</strong> They never filled the field in. There is
+      no way to recover this from their profile, only by asking.</li>
+    <li><strong>Ambiguous places.</strong> A bare "Georgia" could be the country or the US
+      state. Where it is genuinely unclear, the person is left unplaced rather than dropped
+      on the wrong continent.</li>
+  </ul>
+  <p>The map tells you <em>who to ask</em>. It does not tell you what is going on in
+  someone's life, and it is not evidence of anything on its own.</p>
+
+  <h2 id="fix">Correcting something</h2>
+  <p>You will know things the data does not. Corrections beat every automated source.</p>
+  <ol>
+    <li>Select the person and click <strong>Suggest a correction</strong>. It shows their
+      <code>key</code> and opens the shared Google Sheet.</li>
+    <li>Find that key in the Sheet's <strong>key</strong> column.</li>
+    <li>Fill in <strong>SET STATUS</strong> or <strong>SET LOCATION</strong>, put your name
+      in <strong>BY</strong>, and say what you know in <strong>WHY</strong>.</li>
+  </ol>
+  <div class="note">
+    <strong>A correction with no reason is skipped.</strong> Not to be difficult. Six months
+    from now an override with no explanation is indistinguishable from a mistake, and nobody
+    will know whether to trust it. One sentence is plenty.
+  </div>
+  <p>Corrections are applied on the next rebuild, so allow a day. They are not instant, and
+  nothing you type on the map page itself is saved.</p>
+
+  <h2 id="claude">Using it with Claude</h2>
+  <p>The map answers "who is near this person." For anything more specific, take the data to
+  an AI agent. No setup, no connector.</p>
+  <ol>
+    <li>Set the filters you want on the map, or leave them wide.</li>
+    <li>Switch to <strong>Table</strong> and click <strong>Export</strong>. You get a CSV of
+      exactly the rows in view.</li>
+    <li>Attach that CSV to Claude and ask.</li>
+  </ol>
+  <p>A prompt that works well as a starting point:</p>
+  <pre><code>This CSV is a snapshot of the WordPress community: one row per person,
+with their role, their last-seen date, an activity status, and their
+city, country, latitude and longitude.
+
+Find every person whose status is "dormant" or "inactive" who has an
+"active" person within 20 miles of them. Use the lat/lng columns to
+work out the distance.
+
+Give me a table: the quiet person, their role, how long they have been
+quiet, the nearest active person, and the distance. Sort so the most
+recently-quiet people come first, because they are the easiest to
+bring back.</code></pre>
+  <p>Swap "20 miles" for whatever radius makes sense, or ask it to group by country, find
+  clusters with no active person at all, or draft an opening message for each pair. The
+  columns are plain and it handles them well.</p>
+  <div class="note">
+    <strong>The export is real people.</strong> It carries names and locations, so it belongs
+    in the same places this dashboard does and nowhere else.
+  </div>
+
+  <h2>Questions</h2>
+  <p>Ask Corey. If something looks wrong, it probably is, and saying so is the fastest way
+  the data gets better.</p>
 </div>
 </body>
 </html>

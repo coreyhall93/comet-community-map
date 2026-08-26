@@ -617,6 +617,19 @@ td .def::after { width: 15rem; }
                vertical-align: -1px; }
 .legend .dot.diamond { transform: rotate(45deg) scale(.85); }
 
+/* Working set. A marked thing has to be findable again after you have moved
+   around the map, so it carries a permanent amber ring rather than relying on
+   the transient selection styling. */
+.pin.in-set { box-shadow: 0 0 0 3px var(--st-slowing), 0 0 0 5px rgba(16,24,40,.6) !important; }
+
+.btn.set-add.on { background: var(--st-slowing); color: #fff; }
+.linkish {
+  background: none; border: 0; padding: 0; cursor: pointer; font: inherit;
+  font-size: var(--t-small); color: var(--accent); text-decoration: underline;
+}
+.linkish:hover { color: var(--ink); }
+.row.set-row .meta:last-child { margin-top: .15rem; }
+
 /* Selection and hover states, last so they win over every status rule above. */
 .pin.is-near   { box-shadow: 0 0 0 3px var(--good-soft), 0 0 0 4px var(--st-active); z-index: 400; }
 .pin.is-picked { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 6px var(--ink);

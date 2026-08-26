@@ -46,7 +46,8 @@
     a11n: [], meetups: [], selectedMeetup: null,
     // Overlay on/off and the live cluster group, keyed by descriptor id, so
     // adding a layer never means adding two more state fields.
-    overlays: {}, overlayLayers: {}
+    overlays: {}, overlayLayers: {},
+    set: [], showSet: false
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -344,6 +345,108 @@
    * Status is upstream's, on a 365-day window. A meetup that met ten months ago
    * is "Active" here while a person silent for two months is "slowing". That is
    * deliberate and the legend says so; do not reconcile the two scales. */
+  /* --- working set --------------------------------------------------------
+   *
+   * A basket you fill from anywhere on the map and then take somewhere else.
+   *
+   * Filters answer "who matches these criteria". They cannot answer "these
+   * particular seven people and that meetup group, because I have a reason for
+   * each of them". That reason lives in the reader's head and no filter will
+   * ever reconstruct it, so the tool has to let them assemble the set by hand.
+   *
+   * It deliberately survives filtering, layer toggles and reload: you build it
+   * WHILE moving around the map, and changing the view to find the next person
+   * must not throw away the last one. localStorage, because there is no server
+   * and this is one person's scratch list, not shared state. */
+  var SET_KEY = "community-map-set";
+
+  function loadSet() {
+    try { return JSON.parse(localStorage.getItem(SET_KEY) || "[]"); }
+    catch (e) { return []; }
+  }
+  function persistSet() {
+    try { localStorage.setItem(SET_KEY, JSON.stringify(state.set)); } catch (e) {}
+  }
+
+  function setIdOf(kind, rec) {
+    if (kind === "person") return "person:" + keyOf(rec);
+    if (kind === "meetup") return overlayById("meetups").key(rec);
+    return overlayById("a11n").key(rec);
+  }
+  function inSet(kind, rec) {
+    var id = setIdOf(kind, rec);
+    return state.set.some(function (e) { return e.id === id; });
+  }
+
+  /* Snapshot rather than reference: the set has to keep meaning something after
+   * a rebuild, and an entry whose record has vanished should still export. */
+  function toggleSet(kind, rec) {
+    var id = setIdOf(kind, rec);
+    var at = -1;
+    state.set.forEach(function (e, i) { if (e.id === id) at = i; });
+    if (at >= 0) {
+      state.set.splice(at, 1);
+    } else {
+      var e = { id: id, kind: kind, added: new Date().toISOString().slice(0, 10) };
+      if (kind === "person") {
+        e.name = rec.name; e.role = rec.role; e.status = rec.status;
+        e.org = rec.org || ""; e.slack = rec.slack || "";
+        e.last_seen = rec.last_seen || ""; e.employer = rec.employer || "";
+        e.a8c = !!rec.a8c;
+        e.city = rec.city || ""; e.country = rec.country || "";
+        e.lat = rec.lat; e.lng = rec.lng;
+      } else if (kind === "meetup") {
+        e.name = rec.group; e.status = rec.status; e.role = "Meetup group";
+        e.city = rec.city || ""; e.country = rec.country || "";
+        e.members = rec.members; e.last_seen = rec.lastEvent || "";
+        e.url = rec.url || ""; e.lat = rec.lat; e.lng = rec.lng;
+      } else {
+        e.name = rec.name || "Name not listed"; e.role = rec.role || "";
+        e.status = "a8c"; e.org = rec.org || "";
+        e.lat = rec.lat; e.lng = rec.lng;
+      }
+      state.set.push(e);
+    }
+    persistSet();
+    renderSetCount();
+    render();
+    return at < 0;
+  }
+
+  function renderSetCount() {
+    var b = $("set-btn");
+    if (!b) return;
+    b.textContent = state.set.length ? "Set · " + state.set.length : "Set";
+    b.setAttribute("aria-pressed", state.showSet ? "true" : "false");
+    b.disabled = false;
+  }
+
+  function setAddButtonHTML(kind, rec) {
+    var on = inSet(kind, rec);
+    return '<button class="btn set-add' + (on ? " on" : "") +
+      '" data-setkind="' + kind + '" data-setid="' + esc(setIdOf(kind, rec)) + '">' +
+      (on ? "&#10003; In set" : "+ Add to set") + "</button>";
+  }
+
+  /* Everything in the set, as a CSV that can be acted on without the map open --
+   * handed to someone, pasted into a sheet, or given to an AI agent. Distances
+   * are deliberately not included: the set is a list of things, and what pairs
+   * with what is a judgement the reader made, not a column. */
+  function exportSet() {
+    var cols = ["kind", "name", "role", "status", "a8c", "location", "country",
+                "last seen", "members", "org", "slack", "lat", "lng", "url", "added"];
+    var lines = [cols.map(q).join(",")];
+    state.set.forEach(function (e) {
+      lines.push([e.kind, e.name, e.role || "", e.status || "",
+                  e.a8c ? "yes" : "", e.city || "", e.country || "",
+                  e.last_seen || "", e.members == null ? "" : e.members,
+                  e.org || "", e.slack || "",
+                  e.lat == null ? "" : e.lat, e.lng == null ? "" : e.lng,
+                  e.url || "", e.added].map(q).join(","));
+    });
+    download(lines.join("\n"), "community-map-set.csv", "text/csv");
+  }
+
   /* --- layer registry -----------------------------------------------------
    *
    * People are the BASE layer, not an entry here: they drive the filter bar,
@@ -490,8 +593,11 @@
         icon: L.divIcon({
           className: "",
           html: av
-            ? avatarPinHTML(av, def.shape + " " + def.cls(r), box, def.shape === "diamond")
+            ? avatarPinHTML(av, def.shape + " " + def.cls(r) +
+                (inSet(def.id === "meetups" ? "meetup" : "a11n", r) ? " in-set" : ""),
+                box, def.shape === "diamond")
             : '<div class="pin ' + def.shape + " " + def.cls(r) +
+              (inSet(def.id === "meetups" ? "meetup" : "a11n", r) ? " in-set" : "") +
               '" style="width:' + box + "px;height:" + box + 'px"></div>',
           iconSize: [box, box], iconAnchor: [box / 2, box / 2]
         }),
@@ -577,7 +683,7 @@
       // whole map is unusable if you cannot reliably land on a person.
       var size = p.tier === "roster" ? 20 : 16;
       var cls = "circle " + p.status + (p.tier === "roster" ? " is-roster" : "") +
-                (p.a8c ? " is-a8c" : "");
+                (p.a8c ? " is-a8c" : "") + (inSet("person", p) ? " in-set" : "");
       var html, box;
       if (p.avatar) {
         box = AVATAR_PX;
@@ -623,8 +729,54 @@
 
   /* --- side panel: quiet people, and who is near them --------------------- */
 
+  function setPanelHTML() {
+    if (!state.set.length) {
+      return '<div class="detail">' +
+        '<button class="backlink" id="do-back">&larr; All people</button>' +
+        "<h2>Working set</h2>" +
+        '<div class="state"><strong>Nothing marked yet.</strong>' +
+        "Open anyone or any meetup group and choose <em>Add to set</em>. Filters " +
+        "answer who matches a rule; this is for the ones you picked on purpose, " +
+        "for reasons the map does not know about. It survives filtering and reload.</div></div>";
+    }
+    var byKind = {};
+    state.set.forEach(function (e) { byKind[e.kind] = (byKind[e.kind] || 0) + 1; });
+    var summary = Object.keys(byKind).map(function (k) {
+      return byKind[k] + " " + k + (byKind[k] === 1 ? "" : "s");
+    }).join(" · ");
+
+    return '<div class="detail">' +
+      '<button class="backlink" id="do-back">&larr; All people</button>' +
+      "<h2>Working set</h2>" +
+      '<p class="meta">' + esc(summary) + "</p>" +
+      '<div class="btnrow" style="margin:var(--s-3) 0">' +
+        '<button class="btn primary" id="set-export">Export CSV</button>' +
+        '<button class="btn" id="set-clear">Clear</button>' +
+      "</div>" +
+      '<div class="nearlist">' + state.set.map(function (e) {
+        return '<div class="row set-row" data-setid="' + esc(e.id) + '">' +
+          '<div class="nm">' + esc(e.name) +
+            ' <span class="tag ' + esc(e.status || "") + '">' + esc(e.status || e.kind) + "</span>" +
+            (e.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</div>" +
+          '<div class="meta">' + esc(e.role || e.kind) +
+            (e.city ? " · " + esc(e.city) : "") + "</div>" +
+          '<div class="meta"><button class="linkish set-remove" data-setid="' +
+            esc(e.id) + '">Remove</button></div>' +
+        "</div>";
+      }).join("") + "</div>" +
+      '<p class="hint" style="margin-top:var(--s-3)">The CSV carries everything ' +
+      "needed to act on these without the map open — hand it to someone, drop it " +
+      "in a sheet, or give it to Claude.</p></div>";
+  }
+
   function renderSide(list) {
     var side = $("side");
+
+    if (state.showSet) {
+      side.innerHTML = setPanelHTML();
+      wireSetPanel();
+      return;
+    }
 
     if (state.selectedMeetup) {
       side.innerHTML = meetupDetailHTML(state.selectedMeetup, list) + pendingHTML();
@@ -878,7 +1030,8 @@
       "</dl>" +
       nearHTML(p, list) +
       '<div class="btnrow">' +
-        '<button class="btn primary" id="do-edit">Suggest a correction</button>' +
+        setAddButtonHTML("person", p) +
+        '<button class="btn" id="do-edit">Suggest a correction</button>' +
       "</div>" +
     "</div>";
   }
@@ -951,7 +1104,8 @@
         (mt.url ? "<dt>Meetup</dt><dd>" + link(mt.url, "meetup.com") + "</dd>" : "") +
       "</dl>" +
       '<p class="hint">Status uses a 365-day window, set by the events dashboard ' +
-      "this comes from. It is a wider window than the one used for people.</p>";
+      "this comes from. It is a wider window than the one used for people.</p>" +
+      '<div class="btnrow" style="margin-bottom:var(--s-3)">' + setAddButtonHTML("meetup", mt) + "</div>";
 
     if (!Object.keys(tally).length) {
       return head + '<p class="label">Who is nearby</p>' + radiusSliderHTML() +
@@ -1165,7 +1319,50 @@
     });
   }
 
+  function wireSetPanel() {
+    var b = $("do-back");
+    if (b) b.onclick = function () { state.showSet = false; renderSetCount(); renderSide(visible()); };
+    var x = $("set-export");
+    if (x) x.onclick = exportSet;
+    var c = $("set-clear");
+    if (c) c.onclick = function () {
+      if (!state.set.length) return;
+      // Destructive and easy to hit by accident next to Export, so it asks.
+      if (!window.confirm("Clear all " + state.set.length + " items from the working set?")) return;
+      state.set = [];
+      persistSet(); renderSetCount(); render(); renderSide(visible());
+    };
+    Array.prototype.forEach.call(document.querySelectorAll("#side .set-remove"), function (el) {
+      el.onclick = function () {
+        var id = el.dataset.setid;
+        state.set = state.set.filter(function (e) { return e.id !== id; });
+        persistSet(); renderSetCount(); render(); renderSide(visible());
+      };
+    });
+  }
+
+  /* Add/remove buttons appear inside records, so wire them wherever a record
+   * renders rather than in each record's own handler. */
+  function wireSetAdd(list) {
+    Array.prototype.forEach.call(document.querySelectorAll("#side .set-add"), function (el) {
+      el.onclick = function () {
+        var kind = el.dataset.setkind, id = el.dataset.setid;
+        var rec = null;
+        if (kind === "person") {
+          list.forEach(function (p) { if (setIdOf("person", p) === id) rec = p; });
+          if (!rec) state.data.people.forEach(function (p) { if (setIdOf("person", p) === id) rec = p; });
+        } else if (kind === "meetup") {
+          state.meetups.forEach(function (m) { if (setIdOf("meetup", m) === id) rec = m; });
+        } else {
+          state.a11n.forEach(function (a) { if (setIdOf("a11n", a) === id) rec = a; });
+        }
+        if (rec) { toggleSet(kind, rec); renderSide(visible()); }
+      };
+    });
+  }
+
   function wireMeetupDetail(mt, list) {
+    wireSetAdd(list);
     var b = $("do-back");
     if (b) b.onclick = function () {
       state.selectedMeetup = null;
@@ -1205,6 +1402,7 @@
   }
 
   function wireDetail(p, list) {
+    wireSetAdd(list);
     var rad = $("f-radius"), radOut = $("f-radius-out");
     if (rad) {
       rad.oninput = function (e) {
@@ -1317,6 +1515,7 @@
     state.data = data;
     state.a11n = data.automatticians || [];
     state.meetups = data.meetups || [];
+    state.set = loadSet();
     applyEdits(data.people);
     document.title = "Community Map — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
@@ -1336,6 +1535,13 @@
     $("f-country").onchange = function (e) { state.country = e.target.value; state.page = 0; render(); };
     $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
+
+    $("set-btn").onclick = function () {
+      state.showSet = !state.showSet;
+      if (state.showSet) { state.selected = null; state.selectedMeetup = null; }
+      renderSetCount();
+      renderSide(visible());
+    };
     // Toggles are generated from the registry, so a new layer is a descriptor
     // and not another hand-wired pair of button and handler.
     var seg = $("layer-toggles");

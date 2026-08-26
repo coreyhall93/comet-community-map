@@ -264,11 +264,6 @@ a.btn { text-decoration: none; display: inline-block; }
    is-near   : one of their closest active people
    is-hot    : the row under the cursor right now
    Rings rather than fills, so the status colour underneath stays readable. */
-.pin.is-near   { box-shadow: 0 0 0 3px var(--good-soft), 0 0 0 4px var(--st-active); z-index: 400; }
-.pin.is-picked { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 6px var(--ink);
-                 transform: scale(1.5); z-index: 500; }
-.pin.is-hot    { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 7px var(--accent);
-                 transform: scale(1.6); z-index: 600; }
 .pin { transition: transform var(--m-fast-out), box-shadow var(--m-fast-out); }
 
 .meta.subtle { color: var(--faint); }
@@ -312,7 +307,9 @@ a.btn { text-decoration: none; display: inline-block; }
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; font-weight: 700; font-size: var(--t-small);
   font-variant-numeric: tabular-nums; color: #fff; border: 0;
-  box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 1px 4px rgba(16,24,40,0.28);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.95),
+              0 0 0 3.5px rgba(16,24,40,.5),
+              0 1px 4px rgba(16,24,40,0.28);
   transition: transform var(--m-fast-out);
 }
 .leaflet-marker-icon:hover > .cluster { transform: scale(1.08); }
@@ -352,7 +349,6 @@ a.btn { text-decoration: none; display: inline-block; }
 .pin.a11n {
   background: var(--accent); border: 0;
   border-radius: 2px; transform: rotate(45deg);
-  box-shadow: 0 0 0 1.5px rgba(255,255,255,0.95), 0 1px 3px rgba(16,24,40,0.3);
 }
 .cluster.a11n {
   background: var(--accent); border-radius: 4px; transform: rotate(45deg);
@@ -366,10 +362,7 @@ a.btn { text-decoration: none; display: inline-block; }
 /* Meetup layer. Squares, so the three layers are circle (person), square
    (group) and diamond (Automattician) -- separable in greyscale and to a
    colour-blind reader, which three colours alone would not be. */
-.pin.meetup {
-  border: 0; border-radius: 2px;
-  box-shadow: 0 0 0 1.5px rgba(255,255,255,0.95), 0 1px 3px rgba(16,24,40,0.3);
-}
+.pin.meetup { border: 0; border-radius: 2px; }
 .pin.meetup.m-active  { background: var(--st-active); }
 .pin.meetup.m-dormant { background: var(--st-dormant); }
 .pin.meetup.m-never   { background: #9AA2AD; }
@@ -428,19 +421,55 @@ td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(-
 /* Shape encodes status alongside colour, so the map survives greyscale and
    colour-blindness: circle = active, diamond = new, square = slowing,
    ring = dormant. */
-.pin { border: 1.5px solid rgba(255,255,255,.92); box-shadow: 0 1px 3px rgba(0,0,0,.4);
-       border-radius: 50%; cursor: pointer;
-       transition: transform var(--m-fast-out); }
+/* Marker chrome. A single white hairline was the old treatment and it vanished
+   over pale land and pale water alike -- there is no one colour that separates a
+   dot from a basemap that is light in places and dark in others. Two rings do
+   it: white immediately around the fill to lift it off whatever is beneath, then
+   a dark ring outside that so the white itself has an edge. Readable over land,
+   water, labels and roads, in light and dark themes.
+
+   Rings, not borders: nothing with a border-radius in this file carries a
+   coloured border, and a ring also keeps the dot its stated pixel size instead
+   of quietly growing by 3px. Every layer must still set its own width/height --
+   meetups and Automatticians once did not, which rendered them 0x0 and
+   invisible while their clusters looked fine. */
+.pin { border: 0; border-radius: 50%; cursor: pointer;
+       box-shadow: 0 0 0 1.5px rgba(255,255,255,.95),
+                   0 0 0 3px rgba(16,24,40,.55),
+                   0 1px 3px rgba(0,0,0,.35);
+       transition: transform var(--m-fast-out), box-shadow var(--m-fast-out); }
 .leaflet-marker-icon:hover .pin { transform: scale(1.45); transition: transform var(--m-fast-in); }
 .leaflet-marker-icon:hover .pin.new { transform: scale(1.45) rotate(45deg); }
+/* Shape means LAYER, colour means STATUS. Nothing else.
+   This used to be muddled: "new" people were rotated squares (diamonds) and
+   "slowing" people were squares, which is exactly what the Automattician and
+   meetup layers now use, so a diamond meant two unrelated things depending on
+   which toggles happened to be on. Circles are people, squares are meetup
+   groups, diamonds are Automatticians -- and that holds in greyscale.
+
+   Status is carried by fill colour, plus hollow-vs-solid for the two quiet
+   states, so it survives colour-blindness too. Hollow reads as "not currently
+   giving off signal", which is the thing being shown. */
 .pin.active   { background: var(--st-active); }
-.pin.new      { background: var(--st-new); border-radius: 2px; transform: rotate(45deg); }
-.pin.slowing  { background: var(--st-slowing); border-radius: 2px; }
-.pin.dormant  { background: transparent; border: 3.5px solid var(--st-dormant);
-                box-shadow: 0 1px 3px rgba(0,0,0,.4), inset 0 0 0 1px rgba(255,255,255,.85); }
-.pin.inactive { background: transparent; border: 3px solid var(--st-inactive); opacity: .85; }
+.pin.new      { background: var(--st-new); }
+.pin.slowing  { background: var(--st-slowing); }
 .pin.unknown  { background: var(--st-unknown); }
-.pin.is-roster { box-shadow: 0 0 0 2px rgba(20,24,31,.55), 0 1px 3px rgba(0,0,0,.4); }
+/* Quiet states are hollow. Drawn with an inset ring rather than a border so the
+   dot keeps its stated size and nothing rounded carries a coloured border. */
+.pin.dormant  { background: var(--paper, #fff);
+                box-shadow: inset 0 0 0 3.5px var(--st-dormant),
+                            0 0 0 1.5px rgba(255,255,255,.95),
+                            0 0 0 3px rgba(16,24,40,.55); }
+.pin.inactive { background: var(--paper, #fff); opacity: .9;
+                box-shadow: inset 0 0 0 3px var(--st-inactive),
+                            0 0 0 1.5px rgba(255,255,255,.95),
+                            0 0 0 3px rgba(16,24,40,.55); }
+/* A role-holder gets a heavier outer ring, added to the shared two-ring
+   treatment rather than replacing it -- replacing it was why roster dots lost
+   their contrast against the basemap. */
+.pin.is-roster { box-shadow: 0 0 0 1.5px rgba(255,255,255,.95),
+                             0 0 0 4px rgba(16,24,40,.75),
+                             0 1px 3px rgba(0,0,0,.4); }
 
 .leaflet-popup-content { font-family: var(--sans); font-size: var(--t-small); }
 
@@ -544,3 +573,11 @@ td .def::after { width: 15rem; }
   select.field { width: 100%; }
   header, .controls { overflow-x: clip; }
 }
+
+
+/* Selection and hover states, last so they win over every status rule above. */
+.pin.is-near   { box-shadow: 0 0 0 3px var(--good-soft), 0 0 0 4px var(--st-active); z-index: 400; }
+.pin.is-picked { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 6px var(--ink);
+                 transform: scale(1.5); z-index: 500; }
+.pin.is-hot    { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 7px var(--accent);
+                 transform: scale(1.6); z-index: 600; }

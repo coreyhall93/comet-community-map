@@ -44,7 +44,7 @@
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
     showA11n: false, a11nLayer: null, a11n: [],
-    showMeetups: false, meetupLayer: null, meetups: []
+    showMeetups: false, meetupLayer: null, meetups: [], selectedMeetup: null
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -358,11 +358,13 @@
       var m = L.marker([mt.lat, mt.lng], {
         icon: L.divIcon({
           className: "",
-          html: '<div class="pin meetup ' + (MEETUP_CLASS[mt.status] || "m-never") + '"></div>',
-          iconSize: [11, 11], iconAnchor: [5.5, 5.5]
+          html: '<div class="pin meetup ' + (MEETUP_CLASS[mt.status] || "m-never") +
+                '" style="width:12px;height:12px"></div>',
+          iconSize: [12, 12], iconAnchor: [6, 6]
         }),
         title: mt.group, mStatus: mt.status
       });
+      m.on("click", function () { selectMeetup(mt); });
       m.bindPopup(
         "<strong>" + esc(mt.group) + "</strong><br>" +
         esc(mt.city || "") + (mt.country ? ", " + esc(mt.country) : "") + "<br>" +
@@ -420,8 +422,8 @@
       var m = L.marker([a.lat, a.lng], {
         icon: L.divIcon({
           className: "",
-          html: '<div class="pin a11n"></div>',
-          iconSize: [11, 11], iconAnchor: [5.5, 5.5]
+          html: '<div class="pin a11n" style="width:12px;height:12px"></div>',
+          iconSize: [12, 12], iconAnchor: [6, 6]
         }),
         title: a.name || a.role
       });
@@ -496,6 +498,13 @@
 
   function renderSide(list) {
     var side = $("side");
+
+    if (state.selectedMeetup) {
+      side.innerHTML = meetupDetailHTML(state.selectedMeetup, list) + pendingHTML();
+      wireMeetupDetail(state.selectedMeetup, list);
+      wirePending();
+      return;
+    }
 
     if (state.selected) {
       side.innerHTML = detailHTML(state.selected, list) +
@@ -749,6 +758,74 @@
     return '<div class="chips">' + chips + "</div>";
   }
 
+  /* A meetup is a place, so its record answers the mirror-image question the
+   * person record does: not "who is near this person" but "who is near this
+   * group" -- and specifically, who is active near a group that has stopped
+   * meeting. That pairing is the revival lead. */
+  function selectMeetup(mt) {
+    state.selected = null;
+    state.selectedMeetup = mt;
+    state.editing = false;
+    renderSide(visible());
+    clearMarks("is-picked");
+    clearMarks("is-near");
+    if (state.map && mt.lat != null) {
+      state.map.invalidateSize(false);
+      state.map.flyTo([mt.lat, mt.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM), { duration: 0.6 });
+    }
+    markMarker(meetupKey(mt), "is-picked", true);
+    nearbyPeople({ lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "" }, visible())
+      .forEach(function (h) { markMarker(keyOf(h.p), "is-near", true); });
+  }
+
+  function meetupDetailHTML(mt, list) {
+    var here = { lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "\u0000" };
+    var near = nearbyPeople(here, list, state.nearStatus);
+    var tally = nearbyTally(here, list);
+    var cls = MEETUP_CLASS[mt.status] || "m-never";
+
+    var head = '<div class="detail">' +
+      '<button class="backlink" id="do-back">&larr; All people</button>' +
+      "<h2>" + esc(mt.group) + "</h2>" +
+      '<p class="meta">Meetup group' + (mt.region ? " · " + esc(mt.region) : "") + "</p>" +
+      '<p style="margin-top:var(--s-2)"><span class="tag ' + cls + '">' + esc(mt.status) + "</span></p>" +
+      "<dl>" +
+        "<dt>Where</dt><dd>" + esc(mt.city || "") +
+          (mt.country ? ", " + esc(mt.country) : "") + "</dd>" +
+        "<dt>Members</dt><dd>" + mt.members.toLocaleString() + "</dd>" +
+        "<dt>Past events</dt><dd>" + mt.pastEvents + "</dd>" +
+        "<dt>Last event</dt><dd>" + (mt.lastEvent ? esc(mt.lastEvent) : "none on record") + "</dd>" +
+        (mt.leaders && mt.leaders.length
+          ? "<dt>Organisers</dt><dd>" + mt.leaders.map(esc).join(", ") + "</dd>" : "") +
+        (mt.url ? "<dt>Meetup</dt><dd>" + link(mt.url, "meetup.com") + "</dd>" : "") +
+      "</dl>" +
+      '<p class="hint">Status uses a 365-day window, set by the events dashboard ' +
+      "this comes from. It is a wider window than the one used for people.</p>";
+
+    if (!Object.keys(tally).length) {
+      return head + '<p class="label">Who is nearby</p>' + radiusSliderHTML() +
+        '<div class="state">Nobody within ' + state.radiusMi + " miles. A group with " +
+        "no one around it needs a different kind of help than one with people beside " +
+        "it.</div></div>";
+    }
+    return head + '<p class="label">Who is nearby</p>' + radiusSliderHTML() +
+      nearFilterHTML(tally) +
+      (tally.active ? '<p class="hint">' + tally.active + " active " +
+        (tally.active === 1 ? "person" : "people") + " within " + state.radiusMi +
+        " miles" + (mt.status === "Dormant" ? " — any of them could restart this group." : ".") +
+        "</p>" : "") +
+      '<div class="nearlist">' + near.slice(0, 12).map(function (h) {
+        return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
+            esc(keyOf(h.p)) + '">' +
+          '<div class="nm">' + esc(h.p.name) +
+            ' <span class="tag ' + h.p.status + '">' + h.p.status + "</span></div>" +
+          '<div class="meta">' + roleHTML(h.p.role) + "</div>" +
+          '<div class="meta">' + esc(h.p.city || h.p.country || "") +
+            " · <strong>" + km(h.d) + "</strong> away</div>" +
+        "</div>";
+      }).join("") + "</div></div>";
+  }
+
   /* Meetups near this person, shown only while the layer is on. Dormant groups
    * lead: an active supporter beside a group that has stopped meeting is the
    * single most actionable thing this map can surface. */
@@ -905,6 +982,12 @@
    * fall off the screen -- the point of selecting someone is seeing who is
    * around them. Never zooms out if the viewer is already closer in. */
   var FOCUS_ZOOM = 8;
+  /* Ceiling for the reveal below. zoomToShowLayer keeps zooming until the marker
+   * is no longer inside a cluster, which on a shared city centroid means going
+   * all the way to street level -- the opposite of "close enough to see who is
+   * around them". Clamping means people on an identical coordinate stay in a
+   * cluster you can click to fan out, which is the better trade. */
+  var MAX_FOCUS_ZOOM = 13;
 
   function focusOnMap(p, then) {
     if (!state.map || p.lat == null) return;
@@ -923,7 +1006,10 @@
     setTimeout(function () {
       if (!m || !state.layer.zoomToShowLayer) { if (then) then(m); return; }
       try {
-        state.layer.zoomToShowLayer(m, function () { if (then) then(m); });
+        state.layer.zoomToShowLayer(m, function () {
+          if (state.map.getZoom() > MAX_FOCUS_ZOOM) state.map.setZoom(MAX_FOCUS_ZOOM);
+          if (then) then(m);
+        });
       } catch (e) {
         if (then) then(m);
       }
@@ -932,6 +1018,7 @@
 
   function select(p, list) {
     state.selected = p;
+    state.selectedMeetup = null;
     state.editing = false;
     renderSide(list);
     clearMarks("is-picked");
@@ -946,6 +1033,45 @@
         markMarker(keyOf(h.p), "is-near", true);
       });
       if (m && m.openPopup) m.openPopup();
+    });
+  }
+
+  function wireMeetupDetail(mt, list) {
+    var b = $("do-back");
+    if (b) b.onclick = function () {
+      state.selectedMeetup = null;
+      if (state.map) state.map.closePopup();
+      clearMarks("is-picked");
+      clearMarks("is-near");
+      renderSide(visible());
+    };
+
+    var rad = $("f-radius"), radOut = $("f-radius-out");
+    if (rad) {
+      rad.oninput = function (e) {
+        state.radiusMi = parseInt(e.target.value, 10);
+        if (radOut) radOut.textContent = state.radiusMi + " mi";
+      };
+      rad.onchange = function () { renderSide(visible()); };
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll("#side .chip"), function (el) {
+      el.onclick = function () {
+        var s = el.dataset.status || "";
+        state.nearStatus = (state.nearStatus === s) ? "" : s;
+        renderSide(visible());
+      };
+    });
+
+    Array.prototype.forEach.call(document.querySelectorAll("#side .row.near"), function (el) {
+      var key = el.dataset.key;
+      el.onmouseenter = function () { markMarker(key, "is-hot", true); };
+      el.onmouseleave = function () { markMarker(key, "is-hot", false); };
+      el.onclick = function () {
+        var hit = null;
+        list.forEach(function (q) { if (keyOf(q) === key) hit = q; });
+        if (hit) select(hit, list);
+      };
     });
   }
 

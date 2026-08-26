@@ -259,6 +259,20 @@ a.btn { text-decoration: none; display: inline-block; }
    their own pane and are untouched. */
 .leaflet-pane.is-dark { filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.9); }
 
+/* Marker states driven from the side panel.
+   is-picked : the person currently open in the detail view
+   is-near   : one of their closest active people
+   is-hot    : the row under the cursor right now
+   Rings rather than fills, so the status colour underneath stays readable. */
+.pin.is-near   { box-shadow: 0 0 0 3px var(--good-soft), 0 0 0 4px var(--st-active); z-index: 400; }
+.pin.is-picked { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 6px var(--ink);
+                 transform: scale(1.5); z-index: 500; }
+.pin.is-hot    { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 7px var(--accent);
+                 transform: scale(1.6); z-index: 600; }
+.pin { transition: transform var(--m-fast-out), box-shadow var(--m-fast-out); }
+
+.meta.subtle { color: var(--faint); }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

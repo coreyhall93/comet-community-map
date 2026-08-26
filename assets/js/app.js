@@ -28,7 +28,8 @@
   var state = {
     data: null, view: "map", region: "us", pop: "all", q: "",
     country: "", status: "", rows: 50, page: 0,
-    map: null, layer: null, selected: null
+    map: null, layer: null, selected: null,
+    radiusMi: 100, markers: {}
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -104,15 +105,38 @@
    * The list view already showed a single nearest name; the detail view needs
    * a few, because "who do I ask to reach this person" usually has more than
    * one answer and the second choice matters when the first is a stranger. */
+  function miles(km) { return km * 0.621371; }
+
+  /* Active people near someone, nearest first, bounded by the reachability
+   * radius. The bound is the point: "nearest active person" with no limit
+   * returns whoever happens to be least far away, which at 193 miles is a
+   * technicality rather than someone who is going to reach out. Outside the
+   * radius the honest answer is that nobody is nearby, which is itself worth
+   * knowing -- it marks a place with no local cover. */
   function nearestActive(p, list, n) {
     if (p.lat == null) return [];
-    return list
+    var all = list
       .filter(function (a) {
         return a.status === "active" && a.lat != null && keyOf(a) !== keyOf(p);
       })
       .map(function (a) { return { p: a, d: distance(p, a) }; })
-      .sort(function (x, y) { return x.d - y.d; })
-      .slice(0, n || 3);
+      .sort(function (x, y) { return x.d - y.d; });
+    if (!state.radiusMi) return all.slice(0, n || 3);
+    var inRange = all.filter(function (h) { return miles(h.d) <= state.radiusMi; });
+    return inRange.slice(0, n || 3);
+  }
+
+  /* The closest active person regardless of radius, so a "nobody within N
+   * miles" message can still say how far the nearest one actually is. */
+  function nearestAnywhere(p, list) {
+    if (p.lat == null) return null;
+    var best = null;
+    list.forEach(function (a) {
+      if (a.status !== "active" || a.lat == null || keyOf(a) === keyOf(p)) return;
+      var dd = distance(p, a);
+      if (!best || dd < best.d) best = { p: a, d: dd };
+    });
+    return best;
   }
 
   function slackLink(p) {
@@ -201,6 +225,7 @@
   function renderMap(list) {
     if (!state.map) initMap();
     state.layer.clearLayers();
+    state.markers = {};
     var placed = list.filter(function (p) { return p.lat != null; });
 
     placed.forEach(function (p) {
@@ -215,6 +240,7 @@
         title: p.name
       });
       m.on("click", function () { select(p, list); });
+      state.markers[keyOf(p)] = m;
       m.bindPopup(
         "<strong>" + esc(p.name) + "</strong><br>" +
         esc(p.role) + (roleDef(p.role) ? '<br><span class="popup-def">' + esc(roleDef(p.role)) + "</span>" : "") +
@@ -274,7 +300,6 @@
       return;
     }
 
-    var actives = list.filter(function (p) { return p.status === "active" && p.lat != null; });
     var reachable = quiet.filter(function (p) { return p.status === "dormant"; }).length;
     var html = pendingHTML() +
       '<p class="label">Gone quiet — ' + quiet.length + "</p>" +
@@ -285,20 +310,25 @@
       html += '<div class="state">No dormant people in this view.</div>';
     } else {
       html += quiet.slice(0, 60).map(function (p) {
-        var near = null, d = null;
-        if (p.lat != null) {
-          actives.forEach(function (a) {
-            var dd = distance(p, a);
-            if (near === null || dd < d) { near = a; d = dd; }
-          });
+        var near = nearestActive(p, list, 1)[0] || null;
+        var reach;
+        if (near) {
+          reach = '<div class="meta">Nearest active: <strong>' + esc(near.p.name) +
+                  "</strong> · " + km(near.d) + "</div>";
+        } else if (p.lat == null) {
+          reach = '<div class="meta subtle">No location on record</div>';
+        } else {
+          // Say how far the nearest one actually is, so the radius can be
+          // widened deliberately rather than guessed at.
+          var far = nearestAnywhere(p, list);
+          reach = '<div class="meta subtle">Nobody active within ' + state.radiusMi + " mi" +
+                  (far ? " · closest is " + esc(far.p.name) + " at " + km(far.d) : "") + "</div>";
         }
-        return '<div class="row" data-name="' + esc(p.name) + '">' +
+        return '<div class="row" data-name="' + esc(p.name) + '" data-key="' + esc(keyOf(p)) + '">' +
           '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span></div>" +
           '<div class="meta">' + roleHTML(p.role) +
             (p.last_seen ? " · last seen " + esc(p.last_seen) : " · no signal on record") +
-          "</div>" +
-          (near ? '<div class="meta">Nearest active: <strong>' + esc(near.name) + "</strong> · " + km(d) + "</div>"
-                : '<div class="meta">No mapped active person nearby</div>') +
+          "</div>" + reach +
           "</div>";
       }).join("");
       if (quiet.length > 60) {
@@ -311,11 +341,14 @@
     side.innerHTML = html;
     wirePending();
     Array.prototype.forEach.call(side.querySelectorAll(".row"), function (el) {
-      el.onclick = function () {
-        var nm = el.dataset.name;
-        var hit = list.filter(function (x) { return x.name === nm; })[0];
-        if (hit) select(hit, list);
-      };
+      var key = el.dataset.key;
+      // Match on the .org key, not the name: 78 names in this dataset are shared
+      // by more than one person, so name matching selects the wrong one.
+      var hit = null;
+      list.forEach(function (x) { if (keyOf(x) === key) hit = x; });
+      el.onmouseenter = function () { markMarker(key, "is-hot", true); };
+      el.onmouseleave = function () { markMarker(key, "is-hot", false); };
+      el.onclick = function () { if (hit) select(hit, list); };
     });
   }
 
@@ -450,15 +483,20 @@
     }
     var near = nearestActive(p, list, 3);
     if (!near.length) {
+      var far = nearestAnywhere(p, list);
       return '<p class="label">Who is nearby</p>' +
-        '<div class="state">No active person in this view has a location. ' +
-        "Widen the filters to search a bigger pool.</div>";
+        '<div class="state"><strong>Nobody active within ' + state.radiusMi + ' miles.</strong>' +
+        (far ? "The closest active person is " + esc(far.p.name) + " in " +
+               esc(far.p.city || far.p.country || "an unknown place") + ", " + km(far.d) +
+               " away. Widen the radius if that still counts as reachable."
+             : "No active person in this view has a location to compare against.") +
+        "</div>";
     }
-    return '<p class="label">Closest active people</p>' +
-      '<p class="hint">Nearest first. Any of these is a plausible person to make ' +
-      "the reintroduction.</p>" +
+    return '<p class="label">Closest active people · within ' + state.radiusMi + ' mi</p>' +
+      '<p class="hint">Nearest first. Hover to find them on the map.</p>' +
       '<div class="nearlist">' + near.map(function (h) {
-        return '<div class="row near" data-name="' + esc(h.p.name) + '">' +
+        return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
+            esc(keyOf(h.p)) + '">' +
           '<div class="nm">' + esc(h.p.name) +
             ' <span class="tag ' + h.p.status + '">' + h.p.status + "</span></div>" +
           '<div class="meta">' + roleHTML(h.p.role) +
@@ -492,6 +530,22 @@
       "</div></div>";
   }
 
+  /* Highlighting is done on the marker's own element rather than by re-rendering
+   * the layer, so hovering a name in the panel is instant and does not disturb
+   * the map. Selecting someone marks their dot; hovering a nearby candidate
+   * marks theirs, which is what makes "who is near them" legible at a glance. */
+  function markMarker(key, cls, on) {
+    var m = state.markers[key];
+    var el = m && m.getElement && m.getElement();
+    if (!el) return;
+    var pin = el.querySelector(".pin") || el;
+    pin.classList.toggle(cls, !!on);
+  }
+
+  function clearMarks(cls) {
+    Object.keys(state.markers).forEach(function (k) { markMarker(k, cls, false); });
+  }
+
   /* Zoom close enough to read the surroundings, not so close the neighbours
    * fall off the screen -- the point of selecting someone is seeing who is
    * around them. Never zooms out if the viewer is already closer in. */
@@ -508,13 +562,24 @@
     state.editing = false;
     focusOnMap(p);
     renderSide(list);
+    clearMarks("is-picked");
+    clearMarks("is-near");
+    markMarker(keyOf(p), "is-picked", true);
+    // Mark everyone shown as nearby, so the relationship is visible without
+    // hovering each one in turn.
+    nearestActive(p, list, 3).forEach(function (h) {
+      markMarker(keyOf(h.p), "is-near", true);
+    });
   }
 
   function wireDetail(p, list) {
     Array.prototype.forEach.call(document.querySelectorAll("#side .row.near"), function (el) {
+      var key = el.dataset.key;
+      el.onmouseenter = function () { markMarker(key, "is-hot", true); };
+      el.onmouseleave = function () { markMarker(key, "is-hot", false); };
       el.onclick = function () {
         var hit = null;
-        list.forEach(function (q) { if (q.name === el.dataset.name) hit = q; });
+        list.forEach(function (q) { if (keyOf(q) === key) hit = q; });
         if (hit) select(hit, list);
       };
     });
@@ -605,6 +670,10 @@
     $("f-country").onchange = function (e) { state.country = e.target.value; state.page = 0; render(); };
     $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
+    $("f-radius").onchange  = function (e) {
+      state.radiusMi = parseInt(e.target.value, 10);
+      renderSide(visible());          // proximity only; the dots do not move
+    };
     $("pg-prev").onclick    = function () { state.page--; renderTable(visible()); };
     $("pg-next").onclick    = function () { state.page++; renderTable(visible()); };
     $("do-csv").onclick     = exportCSV;

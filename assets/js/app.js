@@ -137,16 +137,50 @@
    * them" but hid the more useful picture: a person surrounded by six other
    * dormant people is a place that has gone quiet, not one person who has.
    * Status is a filter on this list, not a precondition for building it. */
+  /* Placed-people index, rebuilt only when the visible list actually changes.
+   *
+   * This used to walk the whole visible list on every call: allocate an object
+   * per candidate, compute a Haversine, filter, then sort. It is called once per
+   * quiet person to work out reachability, so on "Everyone in Slack" that came
+   * to roughly 4.8 million distance calculations and ~193,000 sort comparisons
+   * for a single render -- which is why changing a filter felt like the page had
+   * hung.
+   *
+   * Two changes fix it. Cache the placed subset, so the no-location majority is
+   * skipped before any maths. Then reject candidates with a bounding box before
+   * computing a real distance: a degree of latitude is ~69 miles and a degree of
+   * longitude is never more, so anything outside the box cannot be inside the
+   * radius. That discards nearly everything for two subtractions. */
+  var _placedCache = { token: null, list: null };
+
+  function placedIn(list) {
+    if (_placedCache.token !== list) {
+      _placedCache = { token: list,
+                       list: list.filter(function (a) { return a.lat != null; }) };
+    }
+    return _placedCache.list;
+  }
+
   function nearbyPeople(p, list, statusFilter) {
     if (p.lat == null) return [];
-    var out = list
-      .filter(function (a) { return a.lat != null && keyOf(a) !== keyOf(p); })
-      .map(function (a) { return { p: a, d: distance(p, a) }; })
-      .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
-      .sort(function (x, y) { return x.d - y.d; });
-    if (statusFilter) {
-      out = out.filter(function (h) { return h.p.status === statusFilter; });
+    var pk = keyOf(p);
+    var r = state.radiusMi;
+    var dLat = r ? (r / 69) + 0.001 : Infinity;
+    var cosLat = Math.max(0.01, Math.cos(p.lat * Math.PI / 180));
+    var dLng = r ? (r / (69 * cosLat)) + 0.001 : Infinity;
+
+    var placed = placedIn(list);
+    var out = [];
+    for (var i = 0; i < placed.length; i++) {
+      var a = placed[i];
+      if (r && (Math.abs(a.lat - p.lat) > dLat || Math.abs(a.lng - p.lng) > dLng)) continue;
+      if (statusFilter && a.status !== statusFilter) continue;
+      if (keyOf(a) === pk) continue;
+      var d = distance(p, a);
+      if (r && miles(d) > r) continue;
+      out.push({ p: a, d: d });
     }
+    out.sort(function (x, y) { return x.d - y.d; });
     return out;
   }
 
@@ -586,6 +620,7 @@
       }
     });
 
+    var batch = [];
     recs.forEach(function (r) {
       var av = def.avatar(r);
       var box = av ? AVATAR_PX : 17;
@@ -604,11 +639,15 @@
         title: def.name(r),
         rStatus: def.statusLabel(r)
       });
-      m.bindPopup(def.popup(r));
+      m.bindPopup(function () { return def.popup(r); });
       if (def.select) m.on("click", function () { def.select(r); });
       state.markers[def.key(r)] = m;
-      group.addLayer(m);
+      batch.push(m);
     });
+    // addLayers() builds the cluster tree once for the whole batch. Adding one
+    // at a time re-walks it per marker, which is the difference between a
+    // responsive filter change and a frozen tab.
+    group.addLayers(batch);
 
     group.on("animationend", repaintSelection);
     group.addTo(state.map);
@@ -677,6 +716,7 @@
     state.markers = {};
     var placed = list.filter(function (p) { return p.lat != null; });
 
+    var batch = [];
     placed.forEach(function (p) {
       // Hit targets, not decoration. A 10px dot is a hard click on a trackpad
       // and effectively unclickable for anyone whose eyes are not 25 -- the
@@ -700,15 +740,23 @@
       });
       m.on("click", function () { select(p, list); });
       state.markers[keyOf(p)] = m;
-      m.bindPopup(
-        "<strong>" + esc(p.name) + "</strong><br>" +
-        esc(p.role) + (roleDef(p.role) ? '<br><span class="popup-def">' + esc(roleDef(p.role)) + "</span>" : "") +
-        "<br>" + esc(p.city || p.country || "") +
-        (p.precision === "country" ? " <em>(country only)</em>" : "") +
-        '<br><span class="tag ' + p.status + '">' + p.status + "</span>"
-      );
-      state.layer.addLayer(m);
+      // Lazy: Leaflet calls this when the popup is actually opened. Building the
+      // markup eagerly meant composing ~2,900 popup strings on every filter
+      // change, none of which anyone was going to read.
+      m.bindPopup(function () {
+        return "<strong>" + esc(p.name) + "</strong>" +
+          (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "<br>" +
+          esc(p.role) + (roleDef(p.role) ? '<br><span class="popup-def">' + esc(roleDef(p.role)) + "</span>" : "") +
+          "<br>" + esc(p.city || p.country || "") +
+          (p.precision === "country" ? " <em>(country only)</em>" : "") +
+          '<br><span class="tag ' + p.status + '">' + p.status + "</span>";
+      });
+      batch.push(m);
     });
+    // addLayers() builds the cluster tree once for the whole batch. Adding one
+    // at a time re-walks it per marker, which is the difference between a
+    // responsive filter change and a frozen tab.
+    state.layer.addLayers(batch);
 
     if (placed.length) {
       // fitBounds against a pane Leaflet still measures as zero-height silently
@@ -1585,14 +1633,36 @@
       '<div class="editor" style="margin-top:var(--s-2)">' +
       '<input id="pw" class="field" type="password" placeholder="Passphrase" autocomplete="current-password">' +
       '<button class="btn primary" id="pw-go">Open</button></div>';
-    function go() { unlock($("pw").value).catch(function () { gate("Wrong passphrase — try again"); }); }
+    function go() {
+      unlock($("pw").value).catch(function (err) {
+        // Only the HMAC check proves the passphrase is wrong. Everything else --
+        // the payload missing, the network failing, the JSON being malformed --
+        // used to be reported as "wrong passphrase" too, which sent the whole
+        // team off retyping a passphrase that was never the problem.
+        gate(err && err.cmReason ? err.cmReason : "Wrong passphrase — try again");
+      });
+    }
     $("pw-go").onclick = go;
     $("pw").onkeydown = function (e) { if (e.key === "Enter") go(); };
     $("pw").focus();
   }
 
   function unlock(pass) {
-    return fetch("data/people.enc").then(function (r) { return r.arrayBuffer(); }).then(function (buf) {
+    function fail(reason) {
+      var e = new Error(reason);
+      e.cmReason = reason;
+      return e;
+    }
+    return fetch("data/people.enc").then(function (r) {
+      if (!r.ok) {
+        throw fail("Could not load the data (HTTP " + r.status + "). This is not " +
+                   "the passphrase — the encrypted file is missing or unreachable.");
+      }
+      return r.arrayBuffer();
+    }, function () {
+      throw fail("Could not reach the data file. Check the connection — this is " +
+                 "not the passphrase.");
+    }).then(function (buf) {
       var b = new Uint8Array(buf);
       var salt = b.slice(0, 16), iv = b.slice(16, 32),
           ct = b.slice(32, b.length - 32), tag = b.slice(b.length - 32);
@@ -1620,8 +1690,22 @@
             });
         })
         .then(function (pt) {
+          var data;
+          try {
+            data = JSON.parse(new TextDecoder().decode(pt));
+          } catch (e) {
+            // Decryption succeeded, so the passphrase was right and the payload
+            // itself is broken -- a bad build. Say that, or the next hour goes
+            // into the wrong question.
+            throw fail("The passphrase worked, but the data file is corrupt and " +
+                       "could not be read. It needs rebuilding — tell Corey.");
+          }
+          if (!data || !data.people || !data.people.length) {
+            throw fail("The passphrase worked, but the data file contains no " +
+                       "people. It needs rebuilding — tell Corey.");
+          }
           sessionStorage.setItem("cm-pass", pass);
-          boot(JSON.parse(new TextDecoder().decode(pt)));
+          boot(data);
         });
     });
   }

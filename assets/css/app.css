@@ -311,9 +311,8 @@ a.btn { text-decoration: none; display: inline-block; }
 .cluster {
   display: flex; align-items: center; justify-content: center;
   border-radius: 50%; font-weight: 700; font-size: var(--t-small);
-  font-variant-numeric: tabular-nums; color: #fff;
-  border: 2px solid rgba(255,255,255,0.9);
-  box-shadow: 0 1px 4px rgba(16,24,40,0.28);
+  font-variant-numeric: tabular-nums; color: #fff; border: 0;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.9), 0 1px 4px rgba(16,24,40,0.28);
   transition: transform var(--m-fast-out);
 }
 .leaflet-marker-icon:hover > .cluster { transform: scale(1.08); }
@@ -327,29 +326,33 @@ a.btn { text-decoration: none; display: inline-block; }
 /* Status chips. Each carries its count, so the row doubles as a summary of what
    is around this person before any filter is applied. */
 .chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: 0 0 var(--s-3); }
+/* Outlines are inset rings, not borders. Nothing with a border-radius in this
+   stylesheet carries a coloured border, and a ring also keeps the chip the same
+   size whether it is selected or not, so the row does not reflow on click. */
 .chip {
   font: inherit; font-size: var(--t-label); letter-spacing: 0.04em;
   text-transform: uppercase; font-weight: 700;
-  padding: 0.2rem 0.55rem; border-radius: 20px; cursor: pointer;
-  border: 1px solid var(--hair); background: transparent; color: var(--slate);
-  transition: background var(--m-fast-out), border-color var(--m-fast-out);
+  padding: 0.25rem 0.6rem; border-radius: 20px; cursor: pointer;
+  border: 0; background: transparent; color: var(--slate);
+  box-shadow: inset 0 0 0 1px var(--hair);
+  transition: background var(--m-fast-out), box-shadow var(--m-fast-out), color var(--m-fast-out);
 }
-.chip:hover { border-color: var(--slate); color: var(--ink); }
-.chip.on { background: var(--ink); border-color: var(--ink); color: var(--paper, #fff); }
-.chip.active.on   { background: var(--st-active);  border-color: var(--st-active); }
-.chip.slowing.on  { background: #9A5B08;           border-color: #9A5B08; }
-.chip.dormant.on  { background: var(--st-dormant); border-color: var(--st-dormant); }
-.chip.inactive.on { background: #6B7280;           border-color: #6B7280; }
-.chip.unknown.on  { background: #9AA2AD;           border-color: #9AA2AD; }
-.chip.new.on      { background: var(--st-new);     border-color: var(--st-new); }
+.chip:hover { box-shadow: inset 0 0 0 1px var(--slate); color: var(--ink); }
+.chip.on { background: var(--ink); box-shadow: none; color: #fff; }
+.chip.active.on   { background: var(--st-active); }
+.chip.slowing.on  { background: #9A5B08; }
+.chip.dormant.on  { background: var(--st-dormant); }
+.chip.inactive.on { background: #6B7280; }
+.chip.unknown.on  { background: #9AA2AD; }
+.chip.new.on      { background: var(--st-new); }
 
 /* Automattician layer. A diamond, not another coloured circle: three layers on
    one map have to survive colour-blindness and a greyscale screenshot, so the
    distinction is carried by shape first and colour second. */
 .pin.a11n {
-  background: var(--accent); border: 1.5px solid rgba(255,255,255,0.95);
+  background: var(--accent); border: 0;
   border-radius: 2px; transform: rotate(45deg);
-  box-shadow: 0 1px 3px rgba(16,24,40,0.3);
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,0.95), 0 1px 3px rgba(16,24,40,0.3);
 }
 .cluster.a11n {
   background: var(--accent); border-radius: 4px; transform: rotate(45deg);
@@ -509,3 +512,16 @@ td .def::after { width: 15rem; }
 .about-link:hover { text-decoration: underline; }
 .popup-def { color: var(--slate); font-size: 0.85rem; display: block;
              max-width: 15rem; margin: 2px 0; }
+
+/* Narrow screens. This is a desktop dashboard and is not being redesigned for
+   phones, but the page must not scroll sideways: the selects carry an intrinsic
+   min-width that pushed the document 27px past the viewport at 390px, which
+   makes the whole page drift under the thumb. Cap them and let the control rows
+   wrap instead. */
+@media (max-width: 560px) {
+  .controls { gap: var(--s-3); }
+  .controls .group { min-width: 0; flex-wrap: wrap; }
+  .controls .field { max-width: 100%; min-width: 0; }
+  select.field { width: 100%; }
+  header, .controls { overflow-x: clip; }
+}

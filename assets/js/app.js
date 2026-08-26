@@ -10,7 +10,7 @@
    * Leave it empty and the map falls back to OpenStreetMap.
    * Free key, no account needed: https://carto.com/basemaps/apikey/
    * ------------------------------------------------------------------ */
-  var CARTO_KEY = "";
+  var CARTO_KEY = "cb1_25m2_1_a5feb9438d0b6a23b6834c0a";
 
   "use strict";
 

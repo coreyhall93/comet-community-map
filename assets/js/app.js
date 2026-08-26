@@ -36,7 +36,7 @@
     data: null, view: "map", region: "us", pop: "all", q: "",
     country: "", status: "", rows: 50, page: 0,
     map: null, layer: null, selected: null,
-    radiusMi: 100, markers: {}
+    radiusMi: 100, markers: {}, nearStatus: ""
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -114,23 +114,38 @@
    * one answer and the second choice matters when the first is a stranger. */
   function miles(km) { return km * 0.621371; }
 
-  /* Active people near someone, nearest first, bounded by the reachability
-   * radius. The bound is the point: "nearest active person" with no limit
-   * returns whoever happens to be least far away, which at 193 miles is a
-   * technicality rather than someone who is going to reach out. Outside the
-   * radius the honest answer is that nobody is nearby, which is itself worth
-   * knowing -- it marks a place with no local cover. */
-  function nearestActive(p, list, n) {
+  /* Everyone within the radius, nearest first, whatever their status.
+   * This used to return active people only, which answered "who can reach
+   * them" but hid the more useful picture: a person surrounded by six other
+   * dormant people is a place that has gone quiet, not one person who has.
+   * Status is a filter on this list, not a precondition for building it. */
+  function nearbyPeople(p, list, statusFilter) {
     if (p.lat == null) return [];
-    var all = list
-      .filter(function (a) {
-        return a.status === "active" && a.lat != null && keyOf(a) !== keyOf(p);
-      })
+    var out = list
+      .filter(function (a) { return a.lat != null && keyOf(a) !== keyOf(p); })
       .map(function (a) { return { p: a, d: distance(p, a) }; })
+      .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
       .sort(function (x, y) { return x.d - y.d; });
-    if (!state.radiusMi) return all.slice(0, n || 3);
-    var inRange = all.filter(function (h) { return miles(h.d) <= state.radiusMi; });
-    return inRange.slice(0, n || 3);
+    if (statusFilter) {
+      out = out.filter(function (h) { return h.p.status === statusFilter; });
+    }
+    return out;
+  }
+
+  /* The quiet list still asks the narrower question -- "who could reach this
+   * person" -- so it wants active people only. Same radius, same self-exclusion. */
+  function nearestActive(p, list, n) {
+    return nearbyPeople(p, list, "active").slice(0, n || 3);
+  }
+
+  /* What the neighbourhood is made of, as counts per status. This is the
+   * number that answers "is this a cluster of red dots" without squinting. */
+  function nearbyTally(p, list) {
+    var t = {};
+    nearbyPeople(p, list).forEach(function (h) {
+      t[h.p.status] = (t[h.p.status] || 0) + 1;
+    });
+    return t;
   }
 
   /* The closest active person regardless of radius, so a "nobody within N
@@ -214,8 +229,8 @@
     // so the map is never broken, only plainer.
     var carto = CARTO_KEY
       ? L.tileLayer("https://{s}.basemaps.cartocdn.com/" + (dark() ? "dark_all" : "light_all") +
-          "/{z}/{x}/{y}{r}.png?api_key=" + encodeURIComponent(CARTO_KEY),
-          { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 18 })
+          "/{z}/{x}/{y}{r}.png?key=" + encodeURIComponent(CARTO_KEY),
+          { attribution: "&copy; OpenStreetMap &copy; CARTO", subdomains: "abcd", maxZoom: 20 })
       : L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
           { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 });
     carto.addTo(state.map);
@@ -226,7 +241,7 @@
     function syncTheme(isDark) {
       if (CARTO_KEY) {
         carto.setUrl("https://{s}.basemaps.cartocdn.com/" + (isDark ? "dark_all" : "light_all") +
-          "/{z}/{x}/{y}{r}.png?api_key=" + encodeURIComponent(CARTO_KEY));
+          "/{z}/{x}/{y}{r}.png?key=" + encodeURIComponent(CARTO_KEY));
       } else {
         // OSM has no dark style, so invert it in CSS instead.
         var pane = state.map.getPane("tilePane");
@@ -239,7 +254,53 @@
       mq.addEventListener("change", function (e) { syncTheme(e.matches); });
     }
 
-    state.layer = L.layerGroup().addTo(state.map);
+    // Clustering. Half this dataset is geocoded to a city or country centroid,
+    // so dozens of people land on the exact same pixel and only the top one is
+    // clickable. Clustering makes the pile legible: one bubble carrying the
+    // count, coloured by whichever status dominates it, so a red cluster reads
+    // as a place that has gone quiet at a glance. Clicking drills in, and at
+    // full zoom identical coordinates fan out rather than stacking.
+    state.layer = L.markerClusterGroup({
+      maxClusterRadius: 45,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      // No disableClusteringAtZoom on purpose. Turning clustering off at high
+      // zoom would let people geocoded to the same city centroid stack on one
+      // pixel again, which is the problem clustering is here to solve. Keeping
+      // it on at every zoom means a pile of identical coordinates always stays
+      // a countable bubble, and clicking it fans the members out on legs.
+      spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
+      iconCreateFunction: clusterIcon
+    }).addTo(state.map);
+  }
+
+  /* Colour by plurality -- whichever status actually dominates the pile. An
+   * earlier version ranked "inactive" highest, which made every cluster grey,
+   * because with 3,217 inactive people almost every pile contains one. Ties
+   * break toward the status that needs attention, so a cluster split evenly
+   * between active and dormant reads dormant rather than healthy. */
+  var CLUSTER_RANK = ["dormant", "inactive", "slowing", "unknown", "new", "active"];
+
+  function clusterIcon(cluster) {
+    var kids = cluster.getAllChildMarkers();
+    var tally = {};
+    kids.forEach(function (m) {
+      var s = m.options.personStatus || "unknown";
+      tally[s] = (tally[s] || 0) + 1;
+    });
+    var dominant = Object.keys(tally).sort(function (a, b) {
+      if (tally[b] !== tally[a]) return tally[b] - tally[a];          // most numerous
+      return CLUSTER_RANK.indexOf(a) - CLUSTER_RANK.indexOf(b);       // then most urgent
+    })[0] || "unknown";
+    var n = kids.length;
+    var size = n < 10 ? 30 : n < 50 ? 38 : n < 200 ? 46 : 54;
+    return L.divIcon({
+      className: "",
+      html: '<div class="cluster ' + dominant + '" style="width:' + size + "px;height:" + size +
+            'px"><span>' + (n < 1000 ? n : Math.round(n / 100) / 10 + "k") + "</span></div>",
+      iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+    });
   }
 
   function renderMap(list) {
@@ -257,7 +318,8 @@
                 '" style="width:' + size + "px;height:" + size + 'px"></div>',
           iconSize: [size, size], iconAnchor: [size / 2, size / 2]
         }),
-        title: p.name
+        title: p.name,
+        personStatus: p.status
       });
       m.on("click", function () { select(p, list); });
       state.markers[keyOf(p)] = m;
@@ -499,15 +561,28 @@
 
   function radiusSliderHTML() {
     // A slider, not a dropdown: the question is "how far is too far", which is
-    // a continuous judgement the reader makes by feel. It sits here rather than
-    // in the top filter bar because it only ever changes this one answer.
+    // a continuous judgement made by feel rather than picked from a list.
     return '<div class="radius">' +
-      '<label class="label" for="f-radius">Reachable within</label>' +
       '<div class="radius-row">' +
         '<input id="f-radius" type="range" min="25" max="300" step="25" value="' +
-          state.radiusMi + '" aria-label="Reachable within, in miles">' +
+          state.radiusMi + '" aria-label="Radius in miles">' +
         '<output class="radius-out" id="f-radius-out">' + state.radiusMi + ' mi</output>' +
       "</div></div>";
+  }
+
+  /* Status chips double as the neighbourhood summary: each one carries its own
+   * count inside the radius, so the make-up of the area is readable before any
+   * filter is applied. Clicking one narrows the list; clicking it again clears. */
+  function nearFilterHTML(tally) {
+    var order = ["active", "new", "slowing", "dormant", "inactive", "unknown"];
+    var total = order.reduce(function (n, s) { return n + (tally[s] || 0); }, 0);
+    var chips = '<button class="chip' + (state.nearStatus ? "" : " on") +
+                '" data-status="">All ' + total + "</button>";
+    chips += order.filter(function (s) { return tally[s]; }).map(function (s) {
+      return '<button class="chip ' + s + (state.nearStatus === s ? " on" : "") +
+             '" data-status="' + s + '">' + s + " " + tally[s] + "</button>";
+    }).join("");
+    return '<div class="chips">' + chips + "</div>";
   }
 
   function nearHTML(p, list) {
@@ -516,21 +591,27 @@
         '<div class="state">This person has no location on record, so proximity ' +
         "cannot be worked out. Correcting their location puts them on the map.</div>";
     }
-    var near = nearestActive(p, list, 3);
-    var head = '<p class="label">Who is nearby</p>' + radiusSliderHTML();
-    if (!near.length) {
+    var tally = nearbyTally(p, list);
+    var rows = nearbyPeople(p, list, state.nearStatus).slice(0, 12);
+    var head = '<p class="label">Who is nearby</p>' + radiusSliderHTML() + nearFilterHTML(tally);
+
+    if (!Object.keys(tally).length) {
       var far = nearestAnywhere(p, list);
       return head +
-        '<div class="state"><strong>Nobody active within ' + state.radiusMi + ' miles.</strong>' +
-        (far ? "The closest is " + esc(far.p.name) + " in " +
+        '<div class="state"><strong>Nobody within ' + state.radiusMi + ' miles.</strong>' +
+        (far ? "The closest active person is " + esc(far.p.name) + " in " +
                esc(far.p.city || far.p.country || "an unknown place") + ", " + km(far.d) +
                " away. Drag the slider out if that still counts as reachable."
-             : "No active person in this view has a location to compare against.") +
+             : "No one else in this view has a location to compare against.") +
         "</div>";
+    }
+    if (!rows.length) {
+      return head + '<div class="state">Nobody ' + esc(state.nearStatus) +
+             " within " + state.radiusMi + " miles. Clear the filter to see everyone.</div>";
     }
     return head +
       '<p class="hint">Nearest first. Hover a name to find them on the map.</p>' +
-      '<div class="nearlist">' + near.map(function (h) {
+      '<div class="nearlist">' + rows.map(function (h) {
         return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
             esc(keyOf(h.p)) + '">' +
           '<div class="nm">' + esc(h.p.name) +
@@ -587,33 +668,41 @@
    * around them. Never zooms out if the viewer is already closer in. */
   var FOCUS_ZOOM = 8;
 
-  function focusOnMap(p) {
+  function focusOnMap(p, then) {
     if (!state.map || p.lat == null) return;
+    var m = state.markers[keyOf(p)];
     state.map.flyTo([p.lat, p.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM),
                     { duration: 0.6 });
+    // A clustered marker has no element to mark or pop until the cluster is
+    // opened, so ask the cluster group to reveal it -- it zooms in, or fans
+    // the pile out when several people share one coordinate.
+    setTimeout(function () {
+      if (!m || !state.layer.zoomToShowLayer) { if (then) then(m); return; }
+      try {
+        state.layer.zoomToShowLayer(m, function () { if (then) then(m); });
+      } catch (e) {
+        if (then) then(m);
+      }
+    }, 620);
   }
 
   function select(p, list) {
     state.selected = p;
     state.editing = false;
-    focusOnMap(p);
     renderSide(list);
     clearMarks("is-picked");
     clearMarks("is-near");
-    markMarker(keyOf(p), "is-picked", true);
-    // Mark everyone shown as nearby, so the relationship is visible without
-    // hovering each one in turn.
-    nearestActive(p, list, 3).forEach(function (h) {
-      markMarker(keyOf(h.p), "is-near", true);
+    // One selection, both surfaces: the panel shows the record, and the map
+    // reveals their dot, marks it and opens its popup. Selecting from the list
+    // used to leave the map silent, so you had to work out which dot it was.
+    focusOnMap(p, function (m) {
+      if (state.selected !== p) return;
+      markMarker(keyOf(p), "is-picked", true);
+      nearbyPeople(p, list).forEach(function (h) {
+        markMarker(keyOf(h.p), "is-near", true);
+      });
+      if (m && m.openPopup) m.openPopup();
     });
-    // One selection, both surfaces: the panel shows the record and the map
-    // shows the popup over their dot. Selecting from the list used to leave
-    // the map silent, so you had to work out which dot had just been chosen.
-    var m = state.markers[keyOf(p)];
-    if (m && m.openPopup) {
-      // after the fly-to, or Leaflet anchors the popup at the old centre
-      setTimeout(function () { if (state.selected === p) m.openPopup(); }, 620);
-    }
   }
 
   function wireDetail(p, list) {
@@ -628,11 +717,19 @@
       rad.onchange = function () {
         renderSide(visible());
         clearMarks("is-near");
-        nearestActive(p, visible(), 3).forEach(function (h) {
+        nearbyPeople(p, visible()).forEach(function (h) {
           markMarker(keyOf(h.p), "is-near", true);
         });
       };
     }
+
+    Array.prototype.forEach.call(document.querySelectorAll("#side .chip"), function (el) {
+      el.onclick = function () {
+        var s = el.dataset.status || "";
+        state.nearStatus = (state.nearStatus === s) ? "" : s;
+        renderSide(visible());
+      };
+    });
 
     Array.prototype.forEach.call(document.querySelectorAll("#side .row.near"), function (el) {
       var key = el.dataset.key;

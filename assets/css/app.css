@@ -304,6 +304,45 @@ a.btn { text-decoration: none; display: inline-block; }
 }
 .radius input[type="range"]:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft); }
 
+/* Cluster bubbles. Coloured by the status that dominates the pile, so a place
+   that has gone quiet reads red from across the map without opening anything.
+   Deliberately not the markercluster default green/blue, which carries its own
+   unrelated meaning (small/medium/large). */
+.cluster {
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-weight: 700; font-size: var(--t-small);
+  font-variant-numeric: tabular-nums; color: #fff;
+  border: 2px solid rgba(255,255,255,0.9);
+  box-shadow: 0 1px 4px rgba(16,24,40,0.28);
+  transition: transform var(--m-fast-out);
+}
+.leaflet-marker-icon:hover > .cluster { transform: scale(1.08); }
+.cluster.active   { background: var(--st-active); }
+.cluster.new      { background: var(--st-new); }
+.cluster.slowing  { background: #9A5B08; }
+.cluster.dormant  { background: var(--st-dormant); }
+.cluster.inactive { background: #6B7280; }
+.cluster.unknown  { background: #9AA2AD; }
+
+/* Status chips. Each carries its count, so the row doubles as a summary of what
+   is around this person before any filter is applied. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: 0 0 var(--s-3); }
+.chip {
+  font: inherit; font-size: var(--t-label); letter-spacing: 0.04em;
+  text-transform: uppercase; font-weight: 700;
+  padding: 0.2rem 0.55rem; border-radius: 20px; cursor: pointer;
+  border: 1px solid var(--hair); background: transparent; color: var(--slate);
+  transition: background var(--m-fast-out), border-color var(--m-fast-out);
+}
+.chip:hover { border-color: var(--slate); color: var(--ink); }
+.chip.on { background: var(--ink); border-color: var(--ink); color: var(--paper, #fff); }
+.chip.active.on   { background: var(--st-active);  border-color: var(--st-active); }
+.chip.slowing.on  { background: #9A5B08;           border-color: #9A5B08; }
+.chip.dormant.on  { background: var(--st-dormant); border-color: var(--st-dormant); }
+.chip.inactive.on { background: #6B7280;           border-color: #6B7280; }
+.chip.unknown.on  { background: #9AA2AD;           border-color: #9AA2AD; }
+.chip.new.on      { background: var(--st-new);     border-color: var(--st-new); }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

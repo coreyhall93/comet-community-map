@@ -305,7 +305,7 @@ a.btn { text-decoration: none; display: inline-block; }
    unrelated meaning (small/medium/large). */
 .cluster {
   display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; font-weight: 700; font-size: var(--t-small);
+  font-weight: 700; font-size: var(--t-small);
   font-variant-numeric: tabular-nums; color: #fff; border: 0;
   box-shadow: 0 0 0 2px rgba(255,255,255,0.95),
               0 0 0 3.5px rgba(16,24,40,.5),
@@ -346,14 +346,8 @@ a.btn { text-decoration: none; display: inline-block; }
 /* Automattician layer. A diamond, not another coloured circle: three layers on
    one map have to survive colour-blindness and a greyscale screenshot, so the
    distinction is carried by shape first and colour second. */
-.pin.a11n {
-  background: var(--accent); border: 0;
-  border-radius: 2px; transform: rotate(45deg);
-}
-.cluster.a11n {
-  background: var(--accent); border-radius: 4px; transform: rotate(45deg);
-}
-.cluster.a11n > span { transform: rotate(-45deg); }
+.pin.a11n { background: var(--accent); border: 0; }
+.cluster.a11n { background: var(--accent); }
 
 .a11n-block { margin: var(--s-4) 0; padding-top: var(--s-3); border-top: 1px solid var(--hair); }
 .tag.a11n { background: var(--accent-soft); color: var(--accent); }
@@ -368,13 +362,13 @@ a.btn { text-decoration: none; display: inline-block; }
 /* Meetup layer. Squares, so the three layers are circle (person), square
    (group) and diamond (Automattician) -- separable in greyscale and to a
    colour-blind reader, which three colours alone would not be. */
-.pin.meetup { border: 0; border-radius: 2px; }
-.pin.meetup.m-active  { background: var(--st-active); }
-.pin.meetup.m-dormant { background: var(--st-dormant); }
-.pin.meetup.m-never   { background: #9AA2AD; }
-.cluster.meetup { border-radius: 5px; }
-.cluster.meetup.m-active  { background: var(--st-active); }
-.cluster.meetup.m-dormant { background: var(--st-dormant); }
+
+.pin.m-active  { background: var(--st-active); }
+.pin.m-dormant { background: var(--st-dormant); }
+.pin.m-never   { background: #9AA2AD; }
+
+.cluster.m-active  { background: var(--st-active); }
+.cluster.m-dormant { background: var(--st-dormant); }
 
 .tag.m-active  { background: var(--good-soft); color: var(--st-active); }
 .tag.m-dormant { background: var(--crit-soft); color: var(--st-dormant); }
@@ -439,7 +433,7 @@ td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(-
    of quietly growing by 3px. Every layer must still set its own width/height --
    meetups and Automatticians once did not, which rendered them 0x0 and
    invisible while their clusters looked fine. */
-.pin { border: 0; border-radius: 50%; cursor: pointer;
+.pin { border: 0; cursor: pointer;
        box-shadow: 0 0 0 1.5px rgba(255,255,255,.95),
                    0 0 0 3px rgba(16,24,40,.55),
                    0 1px 3px rgba(0,0,0,.35);
@@ -606,6 +600,22 @@ td .def::after { width: 15rem; }
 /* An avatar must not fall back to the hollow treatment -- an inset ring over a
    photo just crops the face. */
 .pin.has-avatar.dormant, .pin.has-avatar.inactive { background: none; opacity: 1; }
+
+/* Shape classes, set from the layer registry. These are the only place shape is
+   decided -- status rules must never touch border-radius or transform again. */
+.pin.circle  { border-radius: 50%; }
+.pin.square  { border-radius: 2px; }
+.pin.diamond { border-radius: 2px; transform: rotate(45deg); }
+.cluster.circle  { border-radius: 50%; }
+.cluster.square  { border-radius: 5px; }
+.cluster.diamond { border-radius: 4px; transform: rotate(45deg); }
+.cluster.diamond > span { transform: rotate(-45deg); }
+
+/* Legend swatches inherit the same shape and status classes as real markers, so
+   the key cannot drift from the map. */
+.legend .dot { display: inline-block; width: 11px; height: 11px; margin-right: .5rem;
+               vertical-align: -1px; }
+.legend .dot.diamond { transform: rotate(45deg) scale(.85); }
 
 /* Selection and hover states, last so they win over every status rule above. */
 .pin.is-near   { box-shadow: 0 0 0 3px var(--good-soft), 0 0 0 4px var(--st-active); z-index: 400; }

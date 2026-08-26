@@ -43,8 +43,10 @@
     country: "", status: "", rows: 50, page: 0,
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
-    showA11n: false, a11nLayer: null, a11n: [],
-    showMeetups: false, meetupLayer: null, meetups: [], selectedMeetup: null
+    a11n: [], meetups: [], selectedMeetup: null,
+    // Overlay on/off and the live cluster group, keyed by descriptor id, so
+    // adding a layer never means adding two more state fields.
+    overlays: {}, overlayLayers: {}
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -312,7 +314,7 @@
     var size = n < 10 ? 30 : n < 50 ? 38 : n < 200 ? 46 : 54;
     return L.divIcon({
       className: "",
-      html: '<div class="cluster ' + dominant + '" style="width:' + size + "px;height:" + size +
+      html: '<div class="cluster circle ' + dominant + '" style="width:' + size + "px;height:" + size +
             'px"><span>' + (n < 1000 ? n : Math.round(n / 100) / 10 + "k") + "</span></div>",
       iconSize: [size, size], iconAnchor: [size / 2, size / 2]
     });
@@ -325,136 +327,216 @@
    * Status is upstream's, on a 365-day window. A meetup that met ten months ago
    * is "Active" here while a person silent for two months is "slowing". That is
    * deliberate and the legend says so; do not reconcile the two scales. */
+  /* --- layer registry -----------------------------------------------------
+   *
+   * People are the BASE layer, not an entry here: they drive the filter bar,
+   * the counters, the table and the quiet list, and forcing them into the same
+   * descriptor as a meetup group would bend both out of shape. Everything drawn
+   * ON TOP of them is an overlay, and every overlay is one descriptor.
+   *
+   * This exists because meetups and Automatticians were hand-rolled twice --
+   * two render functions, two proximity functions, two panel builders, two sets
+   * of toggle wiring, all near-identical. Adding WordPress events or the other
+   * Make teams would have been a third and fourth copy. Now it is a descriptor.
+   *
+   * A descriptor declares:
+   *   id, label, title  identity and the toggle's tooltip
+   *   shape             circle | square | diamond. SHAPE MEANS LAYER. Status is
+   *                     carried by colour, never by shape, or a diamond means
+   *                     two things depending on which toggles are on.
+   *   data()            the records
+   *   key(r)            stable id, namespaced so it cannot collide with a person
+   *   name(r)           display name
+   *   cls(r)            status class for the marker and tag
+   *   statusLabel(r)    human status
+   *   quiet(r)          true when this record is the kind worth acting on;
+   *                     those sort first in the panel
+   *   avatar(r)         image url, or null
+   *   popup(r)          map popup markup
+   *   meta(r, d)        the two meta lines under a name in the nearby list
+   *   blockLabel        heading for that nearby block
+   *   note(recs)        optional line under the heading
+   *   select(r)         what happens when its marker is clicked
+   *   clusterCls(kids)  status class for a cluster of these
+   */
   var MEETUP_CLASS = { "Active": "m-active", "Dormant": "m-dormant", "Not started": "m-never" };
 
-  function meetupKey(m) { return "meetup:" + m.group; }
+  var OVERLAYS = [
+    {
+      id: "meetups",
+      label: "Meetups",
+      title: "WordPress meetup groups, coloured by whether they are still meeting. " +
+             "From Maruti Mohanty's events dashboard.",
+      shape: "square",
+      data: function () { return state.meetups; },
+      key: function (m) { return "meetup:" + m.group; },
+      name: function (m) { return m.group; },
+      cls: function (m) { return MEETUP_CLASS[m.status] || "m-never"; },
+      statusLabel: function (m) { return m.status; },
+      quiet: function (m) { return m.status === "Dormant"; },
+      avatar: function () { return null; },
+      select: function (m) { selectMeetup(m); },
+      blockLabel: "Meetups nearby",
+      note: function (recs) {
+        var d = recs.filter(function (h) { return h.p.status === "Dormant"; }).length;
+        return d ? "Dormant groups first — a group that has stopped meeting with " +
+                   "someone active beside it is the clearest lead here." : "";
+      },
+      popup: function (m) {
+        return "<strong>" + esc(m.group) + "</strong><br>" +
+          esc(m.city || "") + (m.country ? ", " + esc(m.country) : "") + "<br>" +
+          m.members.toLocaleString() + " members · " + m.pastEvents + " past events<br>" +
+          '<span class="tag ' + (MEETUP_CLASS[m.status] || "m-never") + '">' + esc(m.status) + "</span>" +
+          (m.lastEvent ? '<br><span class="popup-def">last event ' + esc(m.lastEvent) + "</span>"
+                       : '<br><span class="popup-def">no events on record</span>') +
+          (m.url ? '<br><a href="' + esc(m.url) + '" target="_blank" rel="noreferrer noopener">meetup.com</a>' : "");
+      },
+      meta: function (m, d) {
+        return [
+          esc(m.city || m.country || "") + " · " + m.members.toLocaleString() + " members",
+          (m.lastEvent ? "last event " + esc(m.lastEvent) : "no events on record") +
+            " · <strong>" + km(d) + "</strong> away"
+        ];
+      },
+      clusterCls: function (kids) {
+        var dormant = kids.filter(function (k) { return k.options.rStatus === "Dormant"; }).length;
+        return dormant > kids.length / 2 ? "m-dormant" : "m-active";
+      }
+    },
+    {
+      id: "a11n",
+      label: "Automatticians",
+      title: "Overlay every Automattician from automattic.com/map. Internal only.",
+      shape: "diamond",
+      data: function () { return state.a11n; },
+      key: function (a) { return "a11n:" + (a.name || a.role) + ":" + a.lat + "," + a.lng; },
+      name: function (a) { return a.name || "Name not listed"; },
+      cls: function () { return "a11n"; },
+      statusLabel: function () { return "a8c"; },
+      quiet: function () { return false; },
+      avatar: function (a) { return a.avatar || null; },
+      select: null,                       // no record panel of their own yet
+      blockLabel: "Automatticians nearby",
+      note: function (recs) {
+        var anon = recs.filter(function (h) { return !(h.p.name || "").trim(); }).length;
+        return anon ? anon + " of these " + (anon === 1 ? "is" : "are") +
+                      " not named on automattic.com/map, so they are counted and not listed." : "";
+      },
+      popup: function (a) {
+        return "<strong>" + esc(a.name || "Name not listed") + "</strong><br>" +
+          esc(a.role) + '<br><span class="popup-def">Automattician</span>';
+      },
+      meta: function (a, d) {
+        return [esc(a.role), "<strong>" + km(d) + "</strong> away"];
+      },
+      clusterCls: function () { return "a11n"; }
+    }
+  ];
 
-  function renderMeetups() {
+  function overlayById(id) {
+    return OVERLAYS.filter(function (o) { return o.id === id; })[0];
+  }
+
+  function overlayOn(id) { return !!state.overlays[id]; }
+
+  /* One renderer for every overlay. Was two near-identical functions. */
+  function renderOverlay(def) {
     if (!state.map) return;
-    if (state.meetupLayer) { state.map.removeLayer(state.meetupLayer); state.meetupLayer = null; }
-    if (!state.showMeetups || !state.meetups.length) return;
+    var live = state.overlayLayers[def.id];
+    if (live) { state.map.removeLayer(live); state.overlayLayers[def.id] = null; }
+    if (!overlayOn(def.id)) return;
 
-    state.meetupLayer = L.markerClusterGroup({
+    var recs = (def.data() || []).filter(function (r) { return r.lat != null; });
+    if (!recs.length) return;
+
+    var group = L.markerClusterGroup({
       maxClusterRadius: 45, spiderfyOnMaxZoom: true, showCoverageOnHover: false,
       spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
       iconCreateFunction: function (c) {
         var kids = c.getAllChildMarkers();
-        var dormant = kids.filter(function (k) { return k.options.mStatus === "Dormant"; }).length;
         var n = kids.length;
         var size = n < 10 ? 28 : n < 50 ? 34 : 42;
-        // A cluster reads dormant when most of the groups in it are dormant --
-        // that is the "region that has gone quiet" signal worth spotting.
-        var cls = dormant > n / 2 ? "m-dormant" : "m-active";
         return L.divIcon({
           className: "",
-          html: '<div class="cluster meetup ' + cls + '" style="width:' + size +
-                "px;height:" + size + 'px"><span>' + n + "</span></div>",
+          html: '<div class="cluster ' + def.shape + " " + def.clusterCls(kids) +
+                '" style="width:' + size + "px;height:" + size + 'px"><span>' + n + "</span></div>",
           iconSize: [size, size], iconAnchor: [size / 2, size / 2]
         });
       }
     });
 
-    state.meetups.forEach(function (mt) {
-      var m = L.marker([mt.lat, mt.lng], {
+    recs.forEach(function (r) {
+      var av = def.avatar(r);
+      var box = av ? AVATAR_PX : 12;
+      var m = L.marker([r.lat, r.lng], {
         icon: L.divIcon({
           className: "",
-          html: '<div class="pin meetup ' + (MEETUP_CLASS[mt.status] || "m-never") +
-                '" style="width:12px;height:12px"></div>',
-          iconSize: [12, 12], iconAnchor: [6, 6]
+          html: av
+            ? avatarPinHTML(av, def.shape + " " + def.cls(r), box, def.shape === "diamond")
+            : '<div class="pin ' + def.shape + " " + def.cls(r) +
+              '" style="width:' + box + "px;height:" + box + 'px"></div>',
+          iconSize: [box, box], iconAnchor: [box / 2, box / 2]
         }),
-        title: mt.group, mStatus: mt.status
+        title: def.name(r),
+        rStatus: def.statusLabel(r)
       });
-      m.on("click", function () { selectMeetup(mt); });
-      m.bindPopup(
-        "<strong>" + esc(mt.group) + "</strong><br>" +
-        esc(mt.city || "") + (mt.country ? ", " + esc(mt.country) : "") + "<br>" +
-        mt.members.toLocaleString() + " members · " + mt.pastEvents + " past events<br>" +
-        '<span class="tag ' + (MEETUP_CLASS[mt.status] || "m-never") + '">' + esc(mt.status) + "</span>" +
-        (mt.lastEvent ? '<br><span class="popup-def">last event ' + esc(mt.lastEvent) + "</span>"
-                      : '<br><span class="popup-def">no events on record</span>') +
-        (mt.url ? '<br><a href="' + esc(mt.url) + '" target="_blank" rel="noreferrer noopener">meetup.com</a>' : "")
-      );
-      state.markers[meetupKey(mt)] = m;
-      state.meetupLayer.addLayer(m);
+      m.bindPopup(def.popup(r));
+      if (def.select) m.on("click", function () { def.select(r); });
+      state.markers[def.key(r)] = m;
+      group.addLayer(m);
     });
-    state.meetupLayer.addTo(state.map);
+
+    group.addTo(state.map);
+    state.overlayLayers[def.id] = group;
   }
 
-  /* Meetups within the radius of a person. A dormant group with an active
-   * supporter nearby is the revival lead the whole layered map is for. */
-  function nearbyMeetups(p) {
-    if (p.lat == null || !state.meetups.length) return [];
-    return state.meetups
-      .map(function (mt) { return { p: mt, d: distance(p, { lat: mt.lat, lng: mt.lng }) }; })
+  function renderOverlays() { OVERLAYS.forEach(renderOverlay); }
+
+  /* One proximity function for every overlay. Was two. */
+  function nearbyIn(def, p) {
+    if (p.lat == null) return [];
+    return (def.data() || [])
+      .filter(function (r) { return r.lat != null; })
+      .map(function (r) { return { p: r, d: distance(p, { lat: r.lat, lng: r.lng }) }; })
       .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
       .sort(function (x, y) { return x.d - y.d; });
   }
 
-  /* Automattician overlay. Distinct SHAPE, not just a distinct colour: three
-   * colour-coded layers on one map fail for anyone colour-blind or reading a
-   * greyscale screenshot, so these are diamonds and community people are
-   * circles. Internal only -- see the note in build_data.py. */
-  function a11nKey(a) { return "a11n:" + a.name; }
+  /* One nearby-block builder for every overlay. Was two. */
+  function overlayBlockHTML(def, p) {
+    if (!overlayOn(def.id) || p.lat == null) return "";
+    var near = nearbyIn(def, p);
+    if (!near.length) {
+      return '<div class="a11n-block"><p class="label">' + esc(def.blockLabel) + "</p>" +
+        '<div class="state">None within ' + state.radiusMi + " miles.</div></div>";
+    }
+    // Whatever the layer calls "worth acting on" sorts first.
+    var lead = near.filter(function (h) { return def.quiet(h.p); });
+    var rest = near.filter(function (h) { return !def.quiet(h.p); });
+    var ordered = lead.concat(rest).filter(function (h) { return (def.name(h.p) || "").trim(); });
+    var note = def.note ? def.note(near) : "";
 
-  function renderA11n() {
-    if (!state.map) return;
-    if (state.a11nLayer) { state.map.removeLayer(state.a11nLayer); state.a11nLayer = null; }
-    if (!state.showA11n || !state.a11n.length) return;
-
-    state.a11nLayer = L.markerClusterGroup({
-      maxClusterRadius: 45,
-      spiderfyOnMaxZoom: true,
-      showCoverageOnHover: false,
-      spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
-      iconCreateFunction: function (c) {
-        var n = c.getChildCount();
-        var size = n < 10 ? 28 : n < 50 ? 34 : 42;
-        return L.divIcon({
-          className: "",
-          html: '<div class="cluster a11n" style="width:' + size + "px;height:" + size +
-                'px"><span>' + n + "</span></div>",
-          iconSize: [size, size], iconAnchor: [size / 2, size / 2]
-        });
-      }
-    });
-
-    state.a11n.forEach(function (a) {
-      var m = L.marker([a.lat, a.lng], {
-        icon: L.divIcon({
-          className: "",
-          html: a.avatar
-            ? avatarPinHTML(a.avatar, "a11n", AVATAR_PX, true)
-            : '<div class="pin a11n" style="width:12px;height:12px"></div>',
-          iconSize: a.avatar ? [AVATAR_PX, AVATAR_PX] : [12, 12],
-          iconAnchor: a.avatar ? [AVATAR_PX / 2, AVATAR_PX / 2] : [6, 6]
-        }),
-        title: a.name || a.role
-      });
-      m.bindPopup("<strong>" + esc(a.name || "Name not listed") + "</strong><br>" +
-                  esc(a.role) + '<br><span class="popup-def">Automattician</span>');
-      state.markers[a11nKey(a)] = m;
-      state.a11nLayer.addLayer(m);
-    });
-    state.a11nLayer.addTo(state.map);
+    return '<div class="a11n-block">' +
+      '<p class="label">' + esc(def.blockLabel) + " · " + near.length +
+        (lead.length ? " · " + lead.length + " dormant" : "") + "</p>" +
+      (note ? '<p class="hint">' + note + "</p>" : "") +
+      '<div class="nearlist">' + ordered.slice(0, 5).map(function (h) {
+        var lines = def.meta(h.p, h.d);
+        return '<div class="row near is-' + def.id + '" data-name="' + esc(def.name(h.p)) +
+            '" data-key="' + esc(def.key(h.p)) + '">' +
+          '<div class="nm">' + esc(def.name(h.p)) +
+            ' <span class="tag ' + def.cls(h.p) + '">' + esc(def.statusLabel(h.p)) + "</span></div>" +
+          lines.map(function (l) { return '<div class="meta">' + l + "</div>"; }).join("") +
+        "</div>";
+      }).join("") + "</div>" +
+      (ordered.length > 5 ? '<p class="hint">' + (ordered.length - 5) + " more within range.</p>" : "") +
+      "</div>";
   }
 
-  /* Automatticians within the radius of a given person. This is the payoff the
-   * layer exists for: a quiet supporter with an Automattician half an hour away
-   * is a specific lead, not a statistic. */
-  function nearbyA11n(p) {
-    if (p.lat == null || !state.a11n.length) return [];
-    return state.a11n
-      .map(function (a) { return { p: a, d: distance(p, a) }; })
-      .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
-      .sort(function (x, y) { return x.d - y.d; });
+  function overlayBlocksHTML(p) {
+    return OVERLAYS.map(function (def) { return overlayBlockHTML(def, p); }).join("");
   }
 
-  /* Marker with a gravatar in it. The photo carries identity and the ring
-   * carries status, which is the only way to show both without inventing a
-   * second colour system. Avatars are bigger than plain dots because a 13px
-   * face is a smudge; they still cluster, so the extra size costs nothing at
-   * low zoom. The diamond layer counter-rotates the image, or every
-   * Automattician's face would sit at 45 degrees. */
   var AVATAR_PX = 26;
 
   function avatarPinHTML(url, cls, size, counterRotate) {
@@ -472,7 +554,8 @@
 
     placed.forEach(function (p) {
       var size = p.tier === "roster" ? 13 : 10;
-      var cls = p.status + (p.tier === "roster" ? " is-roster" : "") + (p.a8c ? " is-a8c" : "");
+      var cls = "circle " + p.status + (p.tier === "roster" ? " is-roster" : "") +
+                (p.a8c ? " is-a8c" : "");
       var html, box;
       if (p.avatar) {
         box = AVATAR_PX;
@@ -513,8 +596,7 @@
       fit();
       requestAnimationFrame(fit);
     }
-    renderA11n();
-    renderMeetups();
+    renderOverlays();
   }
 
   /* --- side panel: quiet people, and who is near them --------------------- */
@@ -643,17 +725,34 @@
     if (x) x.onclick = exportEdits;
   }
 
+  /* Legend, generated from the registry rather than written out by hand, so a
+   * new layer explains itself the moment it is declared. It carries both axes
+   * because they are independent: shape says which layer a mark belongs to,
+   * colour says what state it is in. That distinction is the thing people get
+   * wrong when reading this map, so it leads. */
   function legend() {
     var m = state.data.meta;
-    var rows = STATUS.map(function (s) {
-      return "<dt><span class='dot pin " + s + "'></span>" + s + "</dt><dd>" + esc(m.buckets[s]) + "</dd>";
+
+    var shapes = OVERLAYS.map(function (def) {
+      return "<dt><span class='dot pin " + def.shape + " " + def.cls({ status: "" }) +
+             "'></span>" + esc(def.label) + "</dt><dd>" +
+             (overlayOn(def.id) ? "shown" : "hidden") + "</dd>";
     }).join("");
-    return '<div class="legend"><p class="label">What the colours mean</p><dl>' + rows + "</dl>" +
+
+    var colours = STATUS.map(function (s) {
+      return "<dt><span class='dot pin " + s + "'></span>" + s + "</dt><dd>" +
+             esc(m.buckets[s]) + "</dd>";
+    }).join("");
+
+    return '<div class="legend">' +
+      '<p class="label">Shape is the layer</p><dl>' +
+        "<dt><span class='dot pin circle active'></span>People</dt><dd>always shown</dd>" +
+        shapes +
+      "</dl>" +
+      '<p class="label" style="margin-top:var(--s-4)">Colour is the status</p><dl>' + colours + "</dl>" +
       '<p class="meta" style="font-size:var(--t-small);color:var(--faint);margin-top:var(--s-3)">' +
       esc(m.caveats[1]) + "</p></div>";
   }
-
-  /* --- table ------------------------------------------------------------- */
 
   var COLS = [
     ["name", "Name"], ["role", "Role"], ["status", "Status"], ["last_seen", "Last seen"],
@@ -803,7 +902,7 @@
       state.map.invalidateSize(false);
       state.map.flyTo([mt.lat, mt.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM), { duration: 0.6 });
     }
-    markMarker(meetupKey(mt), "is-picked", true);
+    markMarker(overlayById("meetups").key(mt), "is-picked", true);
     nearbyPeople({ lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "" }, visible())
       .forEach(function (h) { markMarker(keyOf(h.p), "is-near", true); });
   }
@@ -859,74 +958,6 @@
   /* Meetups near this person, shown only while the layer is on. Dormant groups
    * lead: an active supporter beside a group that has stopped meeting is the
    * single most actionable thing this map can surface. */
-  function meetupHTML(p) {
-    if (!state.showMeetups || p.lat == null) return "";
-    var near = nearbyMeetups(p);
-    if (!near.length) {
-      return '<div class="a11n-block"><p class="label">Meetups nearby</p>' +
-        '<div class="state">None within ' + state.radiusMi + " miles.</div></div>";
-    }
-    var dormant = near.filter(function (h) { return h.p.status === "Dormant"; });
-    var ordered = dormant.concat(near.filter(function (h) { return h.p.status !== "Dormant"; }));
-    return '<div class="a11n-block">' +
-      '<p class="label">Meetups nearby · ' + near.length +
-        (dormant.length ? " · " + dormant.length + " dormant" : "") + "</p>" +
-      (dormant.length ? '<p class="hint">Dormant groups first — a group that has stopped ' +
-        "meeting with someone active beside it is the clearest lead here.</p>" : "") +
-      '<div class="nearlist">' + ordered.slice(0, 5).map(function (h) {
-        var cls = MEETUP_CLASS[h.p.status] || "m-never";
-        return '<div class="row near is-meetup" data-name="' + esc(h.p.group) +
-            '" data-key="' + esc(meetupKey(h.p)) + '">' +
-          '<div class="nm">' + esc(h.p.group) +
-            ' <span class="tag ' + cls + '">' + esc(h.p.status) + "</span></div>" +
-          '<div class="meta">' + esc(h.p.city || h.p.country || "") + " · " +
-            h.p.members.toLocaleString() + " members</div>" +
-          '<div class="meta">' + (h.p.lastEvent ? "last event " + esc(h.p.lastEvent)
-                                                : "no events on record") +
-            " · <strong>" + km(h.d) + "</strong> away</div>" +
-        "</div>";
-      }).join("") + "</div>" +
-      (near.length > 5 ? '<p class="hint">' + (near.length - 5) + " more within range.</p>" : "") +
-      "</div>";
-  }
-
-  /* Automatticians near this person, shown only while the layer is on. Kept as
-   * its own block rather than mixed into the list above, because they are a
-   * different kind of thing: no activity status, and reachable for a different
-   * reason -- they are staff who can be asked to make contact. */
-  function a11nHTML(p) {
-    if (!state.showA11n || p.lat == null) return "";
-    var near = nearbyA11n(p);
-    if (!near.length) {
-      return '<div class="a11n-block"><p class="label">Automatticians nearby</p>' +
-        '<div class="state">None within ' + state.radiusMi + " miles.</div></div>";
-    }
-    // Named people first at equal distance: an unnamed dot still counts toward
-    // "is there anyone near here", but only a named one can actually be asked.
-    var named = near.filter(function (h) { return (h.p.name || "").trim(); });
-    var anon = near.length - named.length;
-    var show = named.slice(0, 5);
-
-    return '<div class="a11n-block">' +
-      '<p class="label">Automatticians nearby · ' + near.length + "</p>" +
-      (show.length
-        ? '<div class="nearlist">' + show.map(function (h) {
-            return '<div class="row near is-a11n" data-name="' + esc(h.p.name) +
-                '" data-key="' + esc(a11nKey(h.p)) + '">' +
-              '<div class="nm">' + esc(h.p.name) + ' <span class="tag a11n">a8c</span></div>' +
-              '<div class="meta">' + esc(h.p.role) + "</div>" +
-              '<div class="meta"><strong>' + km(h.d) + "</strong> away</div>" +
-            "</div>";
-          }).join("") + "</div>"
-        : "") +
-      (named.length > 5 ? '<p class="hint">' + (named.length - 5) +
-        " more named within range.</p>" : "") +
-      (anon ? '<p class="hint subtle">' + anon + " more " +
-        (anon === 1 ? "is" : "are") + " in range but not named on automattic.com/map, " +
-        "so they are counted here and not listed.</p>" : "") +
-      "</div>";
-  }
-
   function nearHTML(p, list) {
     if (p.lat == null) {
       return '<p class="label">Who is nearby</p>' +
@@ -942,7 +973,7 @@
       // Layer blocks still render: "no community members nearby, but three
       // dormant meetups and an Automattician are" is a complete answer, and the
       // old early return threw it away.
-      return head + meetupHTML(p) + a11nHTML(p) +
+      return head + overlayBlocksHTML(p) +
         '<div class="state"><strong>Nobody within ' + state.radiusMi + ' miles.</strong>' +
         (far ? "The closest active person is " + esc(far.p.name) + " in " +
                esc(far.p.city || far.p.country || "an unknown place") + ", " + km(far.d) +
@@ -951,10 +982,10 @@
         "</div>";
     }
     if (!rows.length) {
-      return head + meetupHTML(p) + a11nHTML(p) + '<div class="state">Nobody ' + esc(state.nearStatus) +
+      return head + overlayBlocksHTML(p) + '<div class="state">Nobody ' + esc(state.nearStatus) +
              " within " + state.radiusMi + " miles. Clear the filter to see everyone.</div>";
     }
-    return head + meetupHTML(p) + a11nHTML(p) +
+    return head + overlayBlocksHTML(p) +
       '<p class="hint">Nearest first. Hover a name to find them on the map.</p>' +
       '<div class="nearlist">' + rows.map(function (h) {
         return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
@@ -1237,18 +1268,24 @@
     $("f-country").onchange = function (e) { state.country = e.target.value; state.page = 0; render(); };
     $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
-    $("l-meetups").onclick = function () {
-      state.showMeetups = !state.showMeetups;
-      $("l-meetups").setAttribute("aria-pressed", state.showMeetups ? "true" : "false");
-      renderMeetups();
-      renderSide(visible());
-    };
-    $("l-a11n").onclick = function () {
-      state.showA11n = !state.showA11n;
-      $("l-a11n").setAttribute("aria-pressed", state.showA11n ? "true" : "false");
-      renderA11n();
-      renderSide(visible());   // the nearby panel gains or loses its a11n section
-    };
+    // Toggles are generated from the registry, so a new layer is a descriptor
+    // and not another hand-wired pair of button and handler.
+    var seg = $("layer-toggles");
+    if (seg) {
+      seg.innerHTML = OVERLAYS.map(function (def) {
+        return '<button id="l-' + def.id + '" aria-pressed="false" title="' +
+               esc(def.title) + '">' + esc(def.label) + "</button>";
+      }).join("");
+      OVERLAYS.forEach(function (def) {
+        var btn = $("l-" + def.id);
+        btn.onclick = function () {
+          state.overlays[def.id] = !state.overlays[def.id];
+          btn.setAttribute("aria-pressed", state.overlays[def.id] ? "true" : "false");
+          renderOverlay(def);
+          renderSide(visible());
+        };
+      });
+    }
 
     $("pg-prev").onclick    = function () { state.page--; renderTable(visible()); };
     $("pg-next").onclick    = function () { state.page++; renderTable(visible()); };

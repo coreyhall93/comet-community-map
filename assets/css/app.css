@@ -273,6 +273,37 @@ a.btn { text-decoration: none; display: inline-block; }
 
 .meta.subtle { color: var(--faint); }
 
+/* Exit affordance at the top of a record. Reads as a way back, not as a button
+   competing with the one real action on the panel. */
+.backlink {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-size: var(--t-small); color: var(--slate);
+  margin-bottom: var(--s-3); display: inline-block;
+}
+.backlink:hover { color: var(--ink); }
+
+/* Proximity control, inside the answer it changes. */
+.radius { margin: var(--s-2) 0 var(--s-3); }
+.radius-row { display: flex; align-items: center; gap: var(--s-3); }
+.radius-out {
+  font-size: var(--t-small); font-weight: 600; color: var(--ink);
+  min-width: 4.2rem; text-align: right; font-variant-numeric: tabular-nums;
+}
+.radius input[type="range"] {
+  flex: 1; -webkit-appearance: none; appearance: none;
+  height: 3px; border-radius: 3px; background: var(--hair); outline: none;
+}
+.radius input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 0;
+}
+.radius input[type="range"]::-moz-range-thumb {
+  width: 15px; height: 15px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 0;
+}
+.radius input[type="range"]:focus-visible { box-shadow: 0 0 0 3px var(--accent-soft); }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

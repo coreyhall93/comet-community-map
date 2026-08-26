@@ -5,6 +5,13 @@
  * the active people nearest each of them.
  */
 (function () {
+  /* ------------------------------------------------------------------ *
+   * CARTO basemap key. Paste the key between the quotes.
+   * Leave it empty and the map falls back to OpenStreetMap.
+   * Free key, no account needed: https://carto.com/basemaps/apikey/
+   * ------------------------------------------------------------------ */
+  var CARTO_KEY = "";
+
   "use strict";
 
   var STATUS = ["active", "new", "slowing", "dormant", "inactive", "unknown"];
@@ -200,18 +207,31 @@
   function initMap() {
     state.map = L.map("map", { worldCopyJump: true, zoomControl: true })
                  .setView([39.5, -98.35], 4);
-    // Basemap: OpenStreetMap standard. CARTO's basemaps started requiring an
-    // API key and now stamp "API KEY REQUIRED" across every tile, which is not
-    // something to hand a team. OSM is keyless and unrestricted at this volume.
-    // Dark mode inverts the tiles in CSS rather than swapping to a dark style,
-    // because OSM standard has no dark variant.
-    L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors", maxZoom: 18
-    }).addTo(state.map);
+    // Basemap. CARTO's tiles need an API key now (free, 5M tiles/month) and
+    // stamp "API KEY REQUIRED" across every tile without one. The key is
+    // domain-restricted and ships in client-side JS by design, the same way
+    // every web map key does. With no key set this falls back to OpenStreetMap
+    // so the map is never broken, only plainer.
+    var carto = CARTO_KEY
+      ? L.tileLayer("https://{s}.basemaps.cartocdn.com/" + (dark() ? "dark_all" : "light_all") +
+          "/{z}/{x}/{y}{r}.png?api_key=" + encodeURIComponent(CARTO_KEY),
+          { attribution: "&copy; OpenStreetMap &copy; CARTO", maxZoom: 18 })
+      : L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+          { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 });
+    carto.addTo(state.map);
 
+    function dark() {
+      return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    }
     function syncTheme(isDark) {
-      var pane = state.map.getPane("tilePane");
-      if (pane) pane.classList.toggle("is-dark", !!isDark);
+      if (CARTO_KEY) {
+        carto.setUrl("https://{s}.basemaps.cartocdn.com/" + (isDark ? "dark_all" : "light_all") +
+          "/{z}/{x}/{y}{r}.png?api_key=" + encodeURIComponent(CARTO_KEY));
+      } else {
+        // OSM has no dark style, so invert it in CSS instead.
+        var pane = state.map.getPane("tilePane");
+        if (pane) pane.classList.toggle("is-dark", !!isDark);
+      }
     }
     if (window.matchMedia) {
       var mq = window.matchMedia("(prefers-color-scheme: dark)");
@@ -452,6 +472,9 @@
     if (p.last_channel) src.push("last seen in #" + p.last_channel);
 
     return '<div class="detail">' +
+      // Exit sits at the top. It was below the whole record, which meant
+      // scrolling past everything to get back to the list you came from.
+      '<button class="backlink" id="do-back">&larr; All people</button>' +
       "<h2>" + esc(p.name) + "</h2>" +
       '<p class="meta">' + roleHTML(p.role) +
         (p.employer ? " · " + esc(p.employer) : "") + "</p>" +
@@ -470,9 +493,21 @@
       nearHTML(p, list) +
       '<div class="btnrow">' +
         '<button class="btn primary" id="do-edit">Suggest a correction</button>' +
-        '<button class="btn" id="do-back">Back to list</button>' +
       "</div>" +
     "</div>";
+  }
+
+  function radiusSliderHTML() {
+    // A slider, not a dropdown: the question is "how far is too far", which is
+    // a continuous judgement the reader makes by feel. It sits here rather than
+    // in the top filter bar because it only ever changes this one answer.
+    return '<div class="radius">' +
+      '<label class="label" for="f-radius">Reachable within</label>' +
+      '<div class="radius-row">' +
+        '<input id="f-radius" type="range" min="25" max="300" step="25" value="' +
+          state.radiusMi + '" aria-label="Reachable within, in miles">' +
+        '<output class="radius-out" id="f-radius-out">' + state.radiusMi + ' mi</output>' +
+      "</div></div>";
   }
 
   function nearHTML(p, list) {
@@ -482,18 +517,19 @@
         "cannot be worked out. Correcting their location puts them on the map.</div>";
     }
     var near = nearestActive(p, list, 3);
+    var head = '<p class="label">Who is nearby</p>' + radiusSliderHTML();
     if (!near.length) {
       var far = nearestAnywhere(p, list);
-      return '<p class="label">Who is nearby</p>' +
+      return head +
         '<div class="state"><strong>Nobody active within ' + state.radiusMi + ' miles.</strong>' +
-        (far ? "The closest active person is " + esc(far.p.name) + " in " +
+        (far ? "The closest is " + esc(far.p.name) + " in " +
                esc(far.p.city || far.p.country || "an unknown place") + ", " + km(far.d) +
-               " away. Widen the radius if that still counts as reachable."
+               " away. Drag the slider out if that still counts as reachable."
              : "No active person in this view has a location to compare against.") +
         "</div>";
     }
-    return '<p class="label">Closest active people · within ' + state.radiusMi + ' mi</p>' +
-      '<p class="hint">Nearest first. Hover to find them on the map.</p>' +
+    return head +
+      '<p class="hint">Nearest first. Hover a name to find them on the map.</p>' +
       '<div class="nearlist">' + near.map(function (h) {
         return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
             esc(keyOf(h.p)) + '">' +
@@ -570,9 +606,34 @@
     nearestActive(p, list, 3).forEach(function (h) {
       markMarker(keyOf(h.p), "is-near", true);
     });
+    // One selection, both surfaces: the panel shows the record and the map
+    // shows the popup over their dot. Selecting from the list used to leave
+    // the map silent, so you had to work out which dot had just been chosen.
+    var m = state.markers[keyOf(p)];
+    if (m && m.openPopup) {
+      // after the fly-to, or Leaflet anchors the popup at the old centre
+      setTimeout(function () { if (state.selected === p) m.openPopup(); }, 620);
+    }
   }
 
   function wireDetail(p, list) {
+    var rad = $("f-radius"), radOut = $("f-radius-out");
+    if (rad) {
+      rad.oninput = function (e) {
+        state.radiusMi = parseInt(e.target.value, 10);
+        if (radOut) radOut.textContent = state.radiusMi + " mi";
+      };
+      // Re-render on release rather than on every pixel of drag, so the list
+      // does not thrash under the cursor.
+      rad.onchange = function () {
+        renderSide(visible());
+        clearMarks("is-near");
+        nearestActive(p, visible(), 3).forEach(function (h) {
+          markMarker(keyOf(h.p), "is-near", true);
+        });
+      };
+    }
+
     Array.prototype.forEach.call(document.querySelectorAll("#side .row.near"), function (el) {
       var key = el.dataset.key;
       el.onmouseenter = function () { markMarker(key, "is-hot", true); };
@@ -585,7 +646,14 @@
     });
 
     var b = $("do-back"), e = $("do-edit");
-    if (b) b.onclick = function () { state.selected = null; state.editing = false; renderSide(visible()); };
+    if (b) b.onclick = function () {
+      state.selected = null;
+      state.editing = false;
+      if (state.map) state.map.closePopup();
+      clearMarks("is-picked");
+      clearMarks("is-near");
+      renderSide(visible());
+    };
     if (e) e.onclick = function () { state.editing = true; renderSide(visible()); };
 
     var cancel = $("e-cancel");
@@ -670,10 +738,7 @@
     $("f-country").onchange = function (e) { state.country = e.target.value; state.page = 0; render(); };
     $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
-    $("f-radius").onchange  = function (e) {
-      state.radiusMi = parseInt(e.target.value, 10);
-      renderSide(visible());          // proximity only; the dots do not move
-    };
+
     $("pg-prev").onclick    = function () { state.page--; renderTable(visible()); };
     $("pg-next").onclick    = function () { state.page++; renderTable(visible()); };
     $("do-csv").onclick     = exportCSV;

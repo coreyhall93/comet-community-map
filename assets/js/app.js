@@ -15,6 +15,7 @@
   "use strict";
 
   var STATUS = ["active", "new", "slowing", "dormant", "inactive", "unknown"];
+  var SOURCE_LABEL = { slack: "Slack", helpscout: "Help Scout", github: "GitHub" };
   var EDIT_KEY = "community-map-overrides";
 
   /* Role definitions. The team mixed these up live on the 2026-08-05 call, so
@@ -908,9 +909,17 @@
         }
         return '<div class="row" data-name="' + esc(p.name) + '" data-key="' + esc(keyOf(p)) + '">' +
           '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span>" +
-            (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</div>" +
+            (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") +
+            // The whole point of reading more than one source: this person looks
+            // quieter than they are, and the badge says where to look instead.
+            (p.elsewhere ? ' <span class="tag elsewhere">' +
+              esc(p.last_signal_source) + "</span>" : "") + "</div>" +
           '<div class="meta">' + roleHTML(p.role) +
-            (p.last_seen ? " · last seen " + esc(p.last_seen) : " · no signal on record") +
+            // the freshest signal from any source, not just Slack's, or the row
+            // contradicts the record it opens
+            (p.last_signal || p.last_seen
+              ? " · last seen " + esc(p.last_signal || p.last_seen)
+              : " · no signal on record") +
           "</div>" + reach +
           "</div>";
       }).join("");
@@ -1070,7 +1079,17 @@
       "<dl>" +
         "<dt>Location</dt><dd>" + esc(p.city || p.country || "not on record") +
           (p.precision === "country" ? " <em>(country only)</em>" : "") + "</dd>" +
-        "<dt>Last seen</dt><dd>" + esc(p.last_seen || "no signal on record") + "</dd>" +
+        "<dt>Last seen</dt><dd>" + esc(p.last_signal || p.last_seen || "no signal on record") +
+          (p.last_signal_source ? ' <span class="via">via ' + esc(p.last_signal_source) + "</span>" : "") +
+          "</dd>" +
+        (p.sources && Object.keys(p.sources).length > 1
+          ? "<dt>Seen in</dt><dd>" + Object.keys(p.sources).sort(function (a, b) {
+              return p.sources[b] < p.sources[a] ? -1 : 1;
+            }).map(function (k) {
+              return '<span class="src">' + esc(SOURCE_LABEL[k] || k) + " " +
+                     esc(p.sources[k]) + "</span>";
+            }).join(" ") + "</dd>"
+          : "") +
         "<dt>Evidence</dt><dd>" + (src.length ? esc(src.join(" · ")) : "nothing in the sources we read") + "</dd>" +
         (p.slack ? "<dt>Slack</dt><dd>" + link(slackLink(p), "@" + p.slack) + "</dd>" : "") +
         (p.org ? "<dt>.org</dt><dd>" + link(orgLink(p), p.org) + "</dd>" : "") +

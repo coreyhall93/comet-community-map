@@ -352,6 +352,13 @@ a.btn { text-decoration: none; display: inline-block; }
 .a11n-block { margin: var(--s-4) 0; padding-top: var(--s-3); border-top: 1px solid var(--hair); }
 .tag.a11n { background: var(--accent-soft); color: var(--accent); }
 .tag.a8c { background: var(--accent-soft); color: var(--accent); }
+/* Freshest signal came from somewhere other than Slack. Deliberately loud: it
+   is the correction to the impression the status alone would give. */
+.tag.elsewhere { background: var(--good-soft); color: var(--st-active); }
+.via { color: var(--faint); font-size: var(--t-small); }
+.src { display: inline-block; background: var(--tint); border-radius: 4px;
+       padding: 0.1rem 0.4rem; margin: 0 .2rem .2rem 0; font-size: var(--t-small);
+       color: var(--slate); white-space: nowrap; }
 .record-avatar {
   width: 56px; height: 56px; border-radius: 50%; display: block;
   margin: 0 0 var(--s-2); object-fit: cover; background: var(--tint);

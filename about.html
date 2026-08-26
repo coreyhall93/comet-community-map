@@ -44,6 +44,18 @@
   ol, ul { margin: 0 0 var(--s-4); padding-left: 1.2rem; }
   li { margin-bottom: var(--s-2); font-size: var(--t-small); color: var(--slate); line-height: 1.55; }
   li strong { color: var(--ink); }
+
+  /* Narrow screens. The first column is nowrap so short labels ("Roster",
+     "active") do not wrap mid-word on a wide screen, but that same rule forces
+     the data-sources table to 427px inside a 390px phone and pushes the whole
+     page sideways. Let it wrap when there is no room, and give any table that
+     still cannot fit its own horizontal scroll so the page itself never moves. */
+  @media (max-width: 560px) {
+    .wrap { padding-left: var(--s-3); padding-right: var(--s-3); }
+    td:first-child { white-space: normal; }
+    table { display: block; overflow-x: auto; }
+    pre { font-size: 0.78rem; }
+  }
 </style>
 </head>
 <body>

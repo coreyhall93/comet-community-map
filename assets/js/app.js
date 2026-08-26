@@ -33,7 +33,13 @@
     return d ? '<span class="def" tabindex="0" data-def="' + esc(d) + '">' + esc(r) + "</span>" : esc(r);
   }
   var state = {
-    data: null, view: "map", region: "us", pop: "all", q: "",
+    // Landing state: the 96 people who hold a Community Team role, worldwide.
+    // Region defaults to global because the roster is global -- Karen is in New
+    // Mexico, Cheyne in New Zealand, Maruti in India, Isotta and Juan in Spain.
+    // Filtering to the United States on load cut the list to 11 people and 5
+    // quiet ones, which reads as an empty tool and hides most of Comet's remit.
+    // "Everyone in Slack" is one click away and shows all 7,032.
+    data: null, view: "map", region: "global", pop: "roster", q: "",
     country: "", status: "", rows: 50, page: 0,
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
@@ -99,7 +105,14 @@
     });
   }
 
-  function km(n) { return n.toLocaleString() + " km / " + Math.round(n * 0.621371).toLocaleString() + " mi"; }
+  /* Distances round to the kilometre, so 0 means "under 500m apart on record"
+   * -- which in this dataset almost always means two people resolved to the
+   * same city or country centroid, not that they are neighbours. Saying "0 mi"
+   * invites someone to read a shared centroid as walking distance. */
+  function km(n) {
+    if (n === 0) return "same place on record";
+    return n.toLocaleString() + " km / " + Math.round(n * 0.621371).toLocaleString() + " mi";
+  }
 
   function distance(a, b) {
     var R = 6371, dLat = (b.lat - a.lat) * Math.PI / 180, dLng = (b.lng - a.lng) * Math.PI / 180;
@@ -420,13 +433,31 @@
       return;
     }
     /* Re-engagement ranking, not a dormancy leaderboard.
-     * Someone quiet for 4 months is reachable; someone gone since 2014 is not.
-     * So: people who hold a supporter role first, then the MOST RECENTLY quiet,
+     *
+     * A quiet person with an active person near them is something you can do
+     * today: ask the neighbour to make contact. A quiet person with nobody in
+     * range is a coverage gap -- still worth knowing, but it needs a different
+     * response and it should not sit at the top of a list you are working
+     * through. So reachability sorts first.
+     *
+     * Then: people holding a supporter role, then the MOST RECENTLY quiet,
      * because recoverability falls off with time. Sorting by longest-gone put
-     * 2014 accounts at the top, which is the opposite of actionable. */
+     * 2014 accounts at the top, which is the opposite of actionable.
+     *
+     * Reachability is computed once per render into a lookup rather than inside
+     * the comparator -- a comparator runs O(n log n) times and each call is a
+     * full sweep of the active set, which turns a 1,100-row list into millions
+     * of distance calculations. */
     var quiet = list.filter(function (p) {
       return p.status === "dormant" || p.status === "inactive";
-    }).sort(function (a, b) {
+    });
+    var hasNeighbour = {};
+    quiet.forEach(function (p) {
+      hasNeighbour[keyOf(p)] = nearestActive(p, list, 1).length > 0;
+    });
+    quiet.sort(function (a, b) {
+      var an = hasNeighbour[keyOf(a)] ? 0 : 1, bn = hasNeighbour[keyOf(b)] ? 0 : 1;
+      if (an !== bn) return an - bn;
       var ar = a.tier === "community" ? 1 : 0, br = b.tier === "community" ? 1 : 0;
       if (ar !== br) return ar - br;
       var ad = a.status === "inactive" ? 1 : 0, bd = b.status === "inactive" ? 1 : 0;
@@ -440,11 +471,14 @@
       return;
     }
 
-    var reachable = quiet.filter(function (p) { return p.status === "dormant"; }).length;
+    var recent = quiet.filter(function (p) { return p.status === "dormant"; }).length;
+    var withLead = quiet.filter(function (p) { return hasNeighbour[keyOf(p)]; }).length;
     var html = pendingHTML() +
       '<p class="label">Gone quiet — ' + quiet.length + "</p>" +
-      '<p class="hint">' + reachable + " went quiet within the last year, listed first. " +
-      "Supporters with a role rank above general members.</p>";
+      '<p class="hint">' + withLead + " of these have an active person within " +
+      state.radiusMi + " miles, and are listed first — those are the ones you can act on " +
+      "today. " + recent + " went quiet within the last year. Anyone with nobody in range " +
+      "sits at the bottom: that is a coverage gap, not a lead.</p>";
 
     if (!quiet.length) {
       html += '<div class="state">No dormant people in this view.</div>';

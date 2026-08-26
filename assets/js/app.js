@@ -422,8 +422,11 @@
       var m = L.marker([a.lat, a.lng], {
         icon: L.divIcon({
           className: "",
-          html: '<div class="pin a11n" style="width:12px;height:12px"></div>',
-          iconSize: [12, 12], iconAnchor: [6, 6]
+          html: a.avatar
+            ? avatarPinHTML(a.avatar, "a11n", AVATAR_PX, true)
+            : '<div class="pin a11n" style="width:12px;height:12px"></div>',
+          iconSize: a.avatar ? [AVATAR_PX, AVATAR_PX] : [12, 12],
+          iconAnchor: a.avatar ? [AVATAR_PX / 2, AVATAR_PX / 2] : [6, 6]
         }),
         title: a.name || a.role
       });
@@ -446,6 +449,21 @@
       .sort(function (x, y) { return x.d - y.d; });
   }
 
+  /* Marker with a gravatar in it. The photo carries identity and the ring
+   * carries status, which is the only way to show both without inventing a
+   * second colour system. Avatars are bigger than plain dots because a 13px
+   * face is a smudge; they still cluster, so the extra size costs nothing at
+   * low zoom. The diamond layer counter-rotates the image, or every
+   * Automattician's face would sit at 45 degrees. */
+  var AVATAR_PX = 26;
+
+  function avatarPinHTML(url, cls, size, counterRotate) {
+    var s = size || AVATAR_PX;
+    return '<div class="pin has-avatar ' + cls + '" style="width:' + s + "px;height:" + s + 'px">' +
+      '<img src="' + esc(url) + "?s=" + (s * 2) + '" alt="" loading="lazy"' +
+      (counterRotate ? ' class="counter-rot"' : "") + "></div>";
+  }
+
   function renderMap(list) {
     if (!state.map) initMap();
     state.layer.clearLayers();
@@ -454,13 +472,18 @@
 
     placed.forEach(function (p) {
       var size = p.tier === "roster" ? 13 : 10;
+      var cls = p.status + (p.tier === "roster" ? " is-roster" : "") + (p.a8c ? " is-a8c" : "");
+      var html, box;
+      if (p.avatar) {
+        box = AVATAR_PX;
+        html = avatarPinHTML(p.avatar, cls, box, false);
+      } else {
+        box = size;
+        html = '<div class="pin ' + cls + '" style="width:' + size + "px;height:" + size + 'px"></div>';
+      }
       var m = L.marker([p.lat, p.lng], {
-        icon: L.divIcon({
-          className: "",
-          html: '<div class="pin ' + p.status + (p.tier === "roster" ? " is-roster" : "") +
-                '" style="width:' + size + "px;height:" + size + 'px"></div>',
-          iconSize: [size, size], iconAnchor: [size / 2, size / 2]
-        }),
+        icon: L.divIcon({ className: "", html: html,
+                          iconSize: [box, box], iconAnchor: [box / 2, box / 2] }),
         title: p.name,
         personStatus: p.status
       });
@@ -580,7 +603,8 @@
                   (far ? " · closest is " + esc(far.p.name) + " at " + km(far.d) : "") + "</div>";
         }
         return '<div class="row" data-name="' + esc(p.name) + '" data-key="' + esc(keyOf(p)) + '">' +
-          '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span></div>" +
+          '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span>" +
+            (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</div>" +
           '<div class="meta">' + roleHTML(p.role) +
             (p.last_seen ? " · last seen " + esc(p.last_seen) : " · no signal on record") +
           "</div>" + reach +
@@ -710,9 +734,15 @@
       // Exit sits at the top. It was below the whole record, which meant
       // scrolling past everything to get back to the list you came from.
       '<button class="backlink" id="do-back">&larr; All people</button>' +
-      "<h2>" + esc(p.name) + "</h2>" +
+      (p.avatar ? '<img class="record-avatar" src="' + esc(p.avatar) + '?s=112" alt="">' : "") +
+      "<h2>" + esc(p.name) +
+        // Both things at once, said plainly. Someone can hold a Community Team
+        // role and work here, and the map used to show them twice rather than
+        // saying so.
+        (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</h2>" +
       '<p class="meta">' + roleHTML(p.role) +
-        (p.employer ? " · " + esc(p.employer) : "") + "</p>" +
+        (p.a8c && p.a8c_title ? " · " + esc(p.a8c_title) + " at Automattic"
+                              : (p.employer ? " · " + esc(p.employer) : "")) + "</p>" +
       '<p style="margin-top:var(--s-2)"><span class="tag ' + p.status + '">' + p.status + "</span>" +
         (p.locallyEdited ? ' <span class="edited">· edited locally</span>' :
          p.override ? ' <span class="edited">· corrected</span>' : "") + "</p>" +

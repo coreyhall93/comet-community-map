@@ -357,6 +357,12 @@ a.btn { text-decoration: none; display: inline-block; }
 
 .a11n-block { margin: var(--s-4) 0; padding-top: var(--s-3); border-top: 1px solid var(--hair); }
 .tag.a11n { background: var(--accent-soft); color: var(--accent); }
+.tag.a8c { background: var(--accent-soft); color: var(--accent); }
+.record-avatar {
+  width: 56px; height: 56px; border-radius: 50%; display: block;
+  margin: 0 0 var(--s-2); object-fit: cover; background: var(--tint);
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,.95), 0 0 0 3px var(--hair);
+}
 .row.near.is-a11n .nm { font-weight: 550; }
 
 /* Meetup layer. Squares, so the three layers are circle (person), square
@@ -574,6 +580,32 @@ td .def::after { width: 15rem; }
   header, .controls { overflow-x: clip; }
 }
 
+
+/* Avatar markers. The photo fills the dot and the status ring goes around it,
+   so identity and activity are readable at once without a second colour system.
+   The ring is drawn with box-shadow, which means it does not eat into the image
+   and the marker stays the size the icon was told it is. */
+.pin.has-avatar { padding: 0; overflow: visible; background: none; }
+.pin.has-avatar > img {
+  width: 100%; height: 100%; display: block; border-radius: inherit;
+  object-fit: cover; background: var(--tint);
+}
+/* Diamond layer rotates the container, so the face is counter-rotated back to
+   upright -- otherwise every Automattician sits at 45 degrees. */
+.pin.has-avatar > img.counter-rot { transform: rotate(-45deg) scale(0.78); }
+
+/* Status ring on an avatar. Thicker than the plain-dot ring because it is
+   competing with a photograph rather than a flat fill. */
+.pin.has-avatar.active   { box-shadow: 0 0 0 3px var(--st-active),   0 0 0 4.5px rgba(16,24,40,.55); }
+.pin.has-avatar.new      { box-shadow: 0 0 0 3px var(--st-new),      0 0 0 4.5px rgba(16,24,40,.55); }
+.pin.has-avatar.slowing  { box-shadow: 0 0 0 3px var(--st-slowing),  0 0 0 4.5px rgba(16,24,40,.55); }
+.pin.has-avatar.dormant  { box-shadow: 0 0 0 3px var(--st-dormant),  0 0 0 4.5px rgba(16,24,40,.55); }
+.pin.has-avatar.inactive { box-shadow: 0 0 0 3px var(--st-inactive), 0 0 0 4.5px rgba(16,24,40,.55); }
+.pin.has-avatar.unknown  { box-shadow: 0 0 0 3px var(--st-unknown),  0 0 0 4.5px rgba(16,24,40,.55); }
+.pin.has-avatar.a11n     { box-shadow: 0 0 0 3px var(--accent),      0 0 0 4.5px rgba(16,24,40,.55); }
+/* An avatar must not fall back to the hollow treatment -- an inset ring over a
+   photo just crops the face. */
+.pin.has-avatar.dormant, .pin.has-avatar.inactive { background: none; opacity: 1; }
 
 /* Selection and hover states, last so they win over every status rule above. */
 .pin.is-near   { box-shadow: 0 0 0 3px var(--good-soft), 0 0 0 4px var(--st-active); z-index: 400; }

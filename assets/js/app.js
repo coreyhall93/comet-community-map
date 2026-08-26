@@ -237,8 +237,17 @@
   /* --- map --------------------------------------------------------------- */
 
   function initMap() {
-    state.map = L.map("map", { worldCopyJump: true, zoomControl: true })
-                 .setView([39.5, -98.35], 4);
+    /* zoomSnap 0.5 lets a wheel gesture land between integer zooms instead of
+     * jumping a whole level at a time, and the slower wheel ratio stops one
+     * flick crossing three levels. zoomAnimation keeps markers travelling with
+     * the tiles rather than disappearing and popping back. */
+    state.map = L.map("map", {
+      worldCopyJump: true, zoomControl: true,
+      zoomSnap: 0.5, zoomDelta: 0.5,
+      wheelPxPerZoomLevel: 140, wheelDebounceTime: 45,
+      zoomAnimation: true, markerZoomAnimation: true,
+      inertia: true, inertiaDeceleration: 2200
+    }).setView([39.5, -98.35], 4);
     // Basemap. CARTO's tiles need an API key now (free, 5M tiles/month) and
     // stamp "API KEY REQUIRED" across every tile without one. The key is
     // domain-restricted and ships in client-side JS by design, the same way
@@ -277,11 +286,18 @@
     // count, coloured by whichever status dominates it, so a red cluster reads
     // as a place that has gone quiet at a glance. Clicking drills in, and at
     // full zoom identical coordinates fan out rather than stacking.
+    // Anything that can rebuild marker elements has to repaint the selection.
+    state.map.on("zoomend moveend", function () { setTimeout(repaintSelection, 60); });
+
     state.layer = L.markerClusterGroup({
       maxClusterRadius: 45,
       spiderfyOnMaxZoom: true,
       showCoverageOnHover: false,
       zoomToBoundsOnClick: true,
+      // Default spacing packs a seven-person fan into a few dozen pixels, so
+      // one twitch lands on the map instead of a person and the whole fan
+      // collapses. Spread them right out.
+      spiderfyDistanceMultiplier: 2.6,
       // No disableClusteringAtZoom on purpose. Turning clustering off at high
       // zoom would let people geocoded to the same city centroid stack on one
       // pixel again, which is the problem clustering is here to solve. Keeping
@@ -290,6 +306,7 @@
       spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
       iconCreateFunction: clusterIcon
     }).addTo(state.map);
+    state.layer.on("animationend", repaintSelection);
   }
 
   /* Colour by plurality -- whichever status actually dominates the pile. An
@@ -451,11 +468,12 @@
 
     var group = L.markerClusterGroup({
       maxClusterRadius: 45, spiderfyOnMaxZoom: true, showCoverageOnHover: false,
-      spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
+      spiderfyDistanceMultiplier: 2.6,
+      spiderLegPolylineOptions: { weight: 1.5, color: "#8892a0", opacity: 0.8 },
       iconCreateFunction: function (c) {
         var kids = c.getAllChildMarkers();
         var n = kids.length;
-        var size = n < 10 ? 28 : n < 50 ? 34 : 42;
+        var size = n < 10 ? 36 : n < 50 ? 42 : 50;
         return L.divIcon({
           className: "",
           html: '<div class="cluster ' + def.shape + " " + def.clusterCls(kids) +
@@ -467,7 +485,7 @@
 
     recs.forEach(function (r) {
       var av = def.avatar(r);
-      var box = av ? AVATAR_PX : 12;
+      var box = av ? AVATAR_PX : 17;
       var m = L.marker([r.lat, r.lng], {
         icon: L.divIcon({
           className: "",
@@ -486,6 +504,7 @@
       group.addLayer(m);
     });
 
+    group.on("animationend", repaintSelection);
     group.addTo(state.map);
     state.overlayLayers[def.id] = group;
   }
@@ -537,7 +556,7 @@
     return OVERLAYS.map(function (def) { return overlayBlockHTML(def, p); }).join("");
   }
 
-  var AVATAR_PX = 26;
+  var AVATAR_PX = 34;
 
   function avatarPinHTML(url, cls, size, counterRotate) {
     var s = size || AVATAR_PX;
@@ -553,7 +572,10 @@
     var placed = list.filter(function (p) { return p.lat != null; });
 
     placed.forEach(function (p) {
-      var size = p.tier === "roster" ? 13 : 10;
+      // Hit targets, not decoration. A 10px dot is a hard click on a trackpad
+      // and effectively unclickable for anyone whose eyes are not 25 -- the
+      // whole map is unusable if you cannot reliably land on a person.
+      var size = p.tier === "roster" ? 20 : 16;
       var cls = "circle " + p.status + (p.tier === "roster" ? " is-roster" : "") +
                 (p.a8c ? " is-a8c" : "");
       var html, box;
@@ -589,7 +611,7 @@
       // settled layout, so the result does not depend on load-timing luck.
       var bounds = L.latLngBounds(placed.map(function (p) { return [p.lat, p.lng]; })).pad(0.15);
       var fit = function () {
-        if (!state.map || state.selected) return;   // never fight a selection fly-to
+        if (!state.map || state.selected || state.selectedMeetup) return;   // never fight a selection
         state.map.invalidateSize(false);
         state.map.fitBounds(bounds);
       };
@@ -1027,6 +1049,39 @@
    * the layer, so hovering a name in the panel is instant and does not disturb
    * the map. Selecting someone marks their dot; hovering a nearby candidate
    * marks theirs, which is what makes "who is near them" legible at a glance. */
+  /* Re-apply the current selection to the map.
+   *
+   * Marker clustering destroys and recreates marker elements whenever the view
+   * changes -- zoom, pan into a new cluster, a layer toggling on. The classes
+   * and the open popup live on those elements, so any of those wiped the
+   * highlight and shut the popup while the panel stayed open. From the outside
+   * that reads as "the map refreshed and closed everything".
+   *
+   * State lives in `state.selected` / `state.selectedMeetup`, so the fix is to
+   * paint the map from that state again once the cluster animation settles,
+   * rather than trusting a class to survive. */
+  function repaintSelection() {
+    if (!state.map) return;
+    var sel = state.selected, mt = state.selectedMeetup;
+    if (!sel && !mt) return;
+
+    clearMarks("is-picked");
+    clearMarks("is-near");
+
+    var key = sel ? keyOf(sel) : overlayById("meetups").key(mt);
+    markMarker(key, "is-picked", true);
+
+    var here = sel ? sel : { lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "\u0000" };
+    nearbyPeople(here, visible()).forEach(function (h) {
+      markMarker(keyOf(h.p), "is-near", true);
+    });
+
+    var m = state.markers[key];
+    if (m && m.getElement && m.getElement() && m.openPopup && !m.isPopupOpen()) {
+      m.openPopup();
+    }
+  }
+
   function markMarker(key, cls, on) {
     var m = state.markers[key];
     var el = m && m.getElement && m.getElement();
@@ -1050,31 +1105,44 @@
    * cluster you can click to fan out, which is the better trade. */
   var MAX_FOCUS_ZOOM = 13;
 
+  /* Bring someone into view without diving to street level.
+   *
+   * The obvious move, zoomToShowLayer, keeps zooming until the marker is no
+   * longer inside a cluster -- on a shared city centroid that means maximum
+   * zoom, so you land on a rooftop and lose all sense of who is around them.
+   * Clamping the zoom afterwards is worse: it re-clusters the marker on the way
+   * back out, which closes the popup and drops the highlight. That fight is
+   * what made a selection look like it "closed itself".
+   *
+   * So: fly to a readable zoom and, if the person is still inside a cluster
+   * there, fan that cluster out instead of zooming into it. The pile opens, the
+   * person is clickable, and the surroundings stay on screen -- which is the
+   * entire point of selecting them. */
   function focusOnMap(p, then) {
     if (!state.map || p.lat == null) return;
-    // Revalidate the cached size first. Leaflet caches the container dimensions
-    // and silently no-ops flyTo when it thinks the height is zero -- which is
-    // exactly what happens here, because the only invalidateSize call lives in
-    // renderMap's fit path and that path is skipped once someone is selected.
-    // Symptom: the panel opens the right person and the map never moves.
     state.map.invalidateSize(false);
     var m = state.markers[keyOf(p)];
-    state.map.flyTo([p.lat, p.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM),
-                    { duration: 0.6 });
-    // A clustered marker has no element to mark or pop until the cluster is
-    // opened, so ask the cluster group to reveal it -- it zooms in, or fans
-    // the pile out when several people share one coordinate.
-    setTimeout(function () {
-      if (!m || !state.layer.zoomToShowLayer) { if (then) then(m); return; }
-      try {
-        state.layer.zoomToShowLayer(m, function () {
-          if (state.map.getZoom() > MAX_FOCUS_ZOOM) state.map.setZoom(MAX_FOCUS_ZOOM);
-          if (then) then(m);
-        });
-      } catch (e) {
-        if (then) then(m);
+    var target = Math.max(state.map.getZoom(), FOCUS_ZOOM);
+    state.map.flyTo([p.lat, p.lng], Math.min(target, MAX_FOCUS_ZOOM), { duration: 0.6 });
+
+    // flyTo emits no moveend when the map is already where it was asked to go,
+    // so the settle handler has to be armed both ways or the selection silently
+    // never gets painted. Fires exactly once, whichever arrives first.
+    var settled = false;
+    function onSettle() {
+      if (settled) return;
+      settled = true;
+      if (!m) { if (then) then(m); return; }
+      var parent = state.layer.getVisibleParent && state.layer.getVisibleParent(m);
+      if (parent && parent !== m && parent.spiderfy) {
+        parent.spiderfy();                       // open the pile where it stands
+        setTimeout(function () { if (then) then(m); }, 320);
+        return;
       }
-    }, 620);
+      if (then) then(m);
+    }
+    state.map.once("moveend", onSettle);
+    setTimeout(onSettle, 750);
   }
 
   function select(p, list) {

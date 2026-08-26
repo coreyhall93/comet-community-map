@@ -43,7 +43,8 @@
     country: "", status: "", rows: 50, page: 0,
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
-    showA11n: false, a11nLayer: null, a11n: []
+    showA11n: false, a11nLayer: null, a11n: [],
+    showMeetups: false, meetupLayer: null, meetups: []
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -317,6 +318,76 @@
     });
   }
 
+  /* Meetup overlay. Squares, so the three layers read as circle (person),
+   * square (group) and diamond (Automattician) -- distinguishable in greyscale
+   * and to a colour-blind reader, which three colours alone would not be.
+   *
+   * Status is upstream's, on a 365-day window. A meetup that met ten months ago
+   * is "Active" here while a person silent for two months is "slowing". That is
+   * deliberate and the legend says so; do not reconcile the two scales. */
+  var MEETUP_CLASS = { "Active": "m-active", "Dormant": "m-dormant", "Not started": "m-never" };
+
+  function meetupKey(m) { return "meetup:" + m.group; }
+
+  function renderMeetups() {
+    if (!state.map) return;
+    if (state.meetupLayer) { state.map.removeLayer(state.meetupLayer); state.meetupLayer = null; }
+    if (!state.showMeetups || !state.meetups.length) return;
+
+    state.meetupLayer = L.markerClusterGroup({
+      maxClusterRadius: 45, spiderfyOnMaxZoom: true, showCoverageOnHover: false,
+      spiderLegPolylineOptions: { weight: 1, color: "#9aa2ad", opacity: 0.7 },
+      iconCreateFunction: function (c) {
+        var kids = c.getAllChildMarkers();
+        var dormant = kids.filter(function (k) { return k.options.mStatus === "Dormant"; }).length;
+        var n = kids.length;
+        var size = n < 10 ? 28 : n < 50 ? 34 : 42;
+        // A cluster reads dormant when most of the groups in it are dormant --
+        // that is the "region that has gone quiet" signal worth spotting.
+        var cls = dormant > n / 2 ? "m-dormant" : "m-active";
+        return L.divIcon({
+          className: "",
+          html: '<div class="cluster meetup ' + cls + '" style="width:' + size +
+                "px;height:" + size + 'px"><span>' + n + "</span></div>",
+          iconSize: [size, size], iconAnchor: [size / 2, size / 2]
+        });
+      }
+    });
+
+    state.meetups.forEach(function (mt) {
+      var m = L.marker([mt.lat, mt.lng], {
+        icon: L.divIcon({
+          className: "",
+          html: '<div class="pin meetup ' + (MEETUP_CLASS[mt.status] || "m-never") + '"></div>',
+          iconSize: [11, 11], iconAnchor: [5.5, 5.5]
+        }),
+        title: mt.group, mStatus: mt.status
+      });
+      m.bindPopup(
+        "<strong>" + esc(mt.group) + "</strong><br>" +
+        esc(mt.city || "") + (mt.country ? ", " + esc(mt.country) : "") + "<br>" +
+        mt.members.toLocaleString() + " members · " + mt.pastEvents + " past events<br>" +
+        '<span class="tag ' + (MEETUP_CLASS[mt.status] || "m-never") + '">' + esc(mt.status) + "</span>" +
+        (mt.lastEvent ? '<br><span class="popup-def">last event ' + esc(mt.lastEvent) + "</span>"
+                      : '<br><span class="popup-def">no events on record</span>') +
+        (mt.url ? '<br><a href="' + esc(mt.url) + '" target="_blank" rel="noreferrer noopener">meetup.com</a>' : "")
+      );
+      state.markers[meetupKey(mt)] = m;
+      state.meetupLayer.addLayer(m);
+    });
+    state.meetupLayer.addTo(state.map);
+  }
+
+  /* Meetups within the radius of a person. A dormant group with an active
+   * supporter nearby is the revival lead the whole layered map is for. */
+  function nearbyMeetups(p) {
+    if (p.lat == null || !state.meetups.length) return [];
+    return state.meetups
+      .map(function (mt) { return { p: mt, d: distance(p, { lat: mt.lat, lng: mt.lng }) }; })
+      .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
+      .sort(function (x, y) { return x.d - y.d; });
+  }
+
   /* Automattician overlay. Distinct SHAPE, not just a distinct colour: three
    * colour-coded layers on one map fail for anyone colour-blind or reading a
    * greyscale screenshot, so these are diamonds and community people are
@@ -418,6 +489,7 @@
       requestAnimationFrame(fit);
     }
     renderA11n();
+    renderMeetups();
   }
 
   /* --- side panel: quiet people, and who is near them --------------------- */
@@ -677,6 +749,40 @@
     return '<div class="chips">' + chips + "</div>";
   }
 
+  /* Meetups near this person, shown only while the layer is on. Dormant groups
+   * lead: an active supporter beside a group that has stopped meeting is the
+   * single most actionable thing this map can surface. */
+  function meetupHTML(p) {
+    if (!state.showMeetups || p.lat == null) return "";
+    var near = nearbyMeetups(p);
+    if (!near.length) {
+      return '<div class="a11n-block"><p class="label">Meetups nearby</p>' +
+        '<div class="state">None within ' + state.radiusMi + " miles.</div></div>";
+    }
+    var dormant = near.filter(function (h) { return h.p.status === "Dormant"; });
+    var ordered = dormant.concat(near.filter(function (h) { return h.p.status !== "Dormant"; }));
+    return '<div class="a11n-block">' +
+      '<p class="label">Meetups nearby · ' + near.length +
+        (dormant.length ? " · " + dormant.length + " dormant" : "") + "</p>" +
+      (dormant.length ? '<p class="hint">Dormant groups first — a group that has stopped ' +
+        "meeting with someone active beside it is the clearest lead here.</p>" : "") +
+      '<div class="nearlist">' + ordered.slice(0, 5).map(function (h) {
+        var cls = MEETUP_CLASS[h.p.status] || "m-never";
+        return '<div class="row near is-meetup" data-name="' + esc(h.p.group) +
+            '" data-key="' + esc(meetupKey(h.p)) + '">' +
+          '<div class="nm">' + esc(h.p.group) +
+            ' <span class="tag ' + cls + '">' + esc(h.p.status) + "</span></div>" +
+          '<div class="meta">' + esc(h.p.city || h.p.country || "") + " · " +
+            h.p.members.toLocaleString() + " members</div>" +
+          '<div class="meta">' + (h.p.lastEvent ? "last event " + esc(h.p.lastEvent)
+                                                : "no events on record") +
+            " · <strong>" + km(h.d) + "</strong> away</div>" +
+        "</div>";
+      }).join("") + "</div>" +
+      (near.length > 5 ? '<p class="hint">' + (near.length - 5) + " more within range.</p>" : "") +
+      "</div>";
+  }
+
   /* Automatticians near this person, shown only while the layer is on. Kept as
    * its own block rather than mixed into the list above, because they are a
    * different kind of thing: no activity status, and reachable for a different
@@ -726,7 +832,10 @@
 
     if (!Object.keys(tally).length) {
       var far = nearestAnywhere(p, list);
-      return head +
+      // Layer blocks still render: "no community members nearby, but three
+      // dormant meetups and an Automattician are" is a complete answer, and the
+      // old early return threw it away.
+      return head + meetupHTML(p) + a11nHTML(p) +
         '<div class="state"><strong>Nobody within ' + state.radiusMi + ' miles.</strong>' +
         (far ? "The closest active person is " + esc(far.p.name) + " in " +
                esc(far.p.city || far.p.country || "an unknown place") + ", " + km(far.d) +
@@ -735,10 +844,10 @@
         "</div>";
     }
     if (!rows.length) {
-      return head + a11nHTML(p) + '<div class="state">Nobody ' + esc(state.nearStatus) +
+      return head + meetupHTML(p) + a11nHTML(p) + '<div class="state">Nobody ' + esc(state.nearStatus) +
              " within " + state.radiusMi + " miles. Clear the filter to see everyone.</div>";
     }
-    return head + a11nHTML(p) +
+    return head + meetupHTML(p) + a11nHTML(p) +
       '<p class="hint">Nearest first. Hover a name to find them on the map.</p>' +
       '<div class="nearlist">' + rows.map(function (h) {
         return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +
@@ -799,6 +908,12 @@
 
   function focusOnMap(p, then) {
     if (!state.map || p.lat == null) return;
+    // Revalidate the cached size first. Leaflet caches the container dimensions
+    // and silently no-ops flyTo when it thinks the height is zero -- which is
+    // exactly what happens here, because the only invalidateSize call lives in
+    // renderMap's fit path and that path is skipped once someone is selected.
+    // Symptom: the panel opens the right person and the map never moves.
+    state.map.invalidateSize(false);
     var m = state.markers[keyOf(p)];
     state.map.flyTo([p.lat, p.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM),
                     { duration: 0.6 });
@@ -946,6 +1061,7 @@
   function boot(data) {
     state.data = data;
     state.a11n = data.automatticians || [];
+    state.meetups = data.meetups || [];
     applyEdits(data.people);
     document.title = "Community Map — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
@@ -965,6 +1081,12 @@
     $("f-country").onchange = function (e) { state.country = e.target.value; state.page = 0; render(); };
     $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
+    $("l-meetups").onclick = function () {
+      state.showMeetups = !state.showMeetups;
+      $("l-meetups").setAttribute("aria-pressed", state.showMeetups ? "true" : "false");
+      renderMeetups();
+      renderSide(visible());
+    };
     $("l-a11n").onclick = function () {
       state.showA11n = !state.showA11n;
       $("l-a11n").setAttribute("aria-pressed", state.showA11n ? "true" : "false");

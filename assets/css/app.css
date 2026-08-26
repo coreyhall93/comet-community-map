@@ -363,6 +363,25 @@ a.btn { text-decoration: none; display: inline-block; }
 .tag.a11n { background: var(--accent-soft); color: var(--accent); }
 .row.near.is-a11n .nm { font-weight: 550; }
 
+/* Meetup layer. Squares, so the three layers are circle (person), square
+   (group) and diamond (Automattician) -- separable in greyscale and to a
+   colour-blind reader, which three colours alone would not be. */
+.pin.meetup {
+  border: 0; border-radius: 2px;
+  box-shadow: 0 0 0 1.5px rgba(255,255,255,0.95), 0 1px 3px rgba(16,24,40,0.3);
+}
+.pin.meetup.m-active  { background: var(--st-active); }
+.pin.meetup.m-dormant { background: var(--st-dormant); }
+.pin.meetup.m-never   { background: #9AA2AD; }
+.cluster.meetup { border-radius: 5px; }
+.cluster.meetup.m-active  { background: var(--st-active); }
+.cluster.meetup.m-dormant { background: var(--st-dormant); }
+
+.tag.m-active  { background: var(--good-soft); color: var(--st-active); }
+.tag.m-dormant { background: var(--crit-soft); color: var(--st-dormant); }
+.tag.m-never   { background: var(--tint);      color: var(--slate); }
+.row.near.is-meetup .nm { font-weight: 550; }
+
 /* Status pill — colour on the label, never on a container edge. */
 .tag {
   display: inline-block; font-size: var(--t-label); letter-spacing: 0.09em;

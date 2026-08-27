@@ -2897,7 +2897,6 @@
     document.title = "Community Reach — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
     syncExpandButton();
-    if ($("open-data")) $("open-data").onclick = openDataNote;
 
     // Place list, most-populated first, so the useful ones are at the top.
     // Each count is produced by the same predicate that filters on it, so the

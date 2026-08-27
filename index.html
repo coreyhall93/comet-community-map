@@ -16,15 +16,7 @@
     <div>
       <h1>Community Map</h1>
       <p class="sub">Who has gone quiet, and who is near enough to reach them.
-        <a href="about.html" class="about-link">About this data</a></p>
-    </div>
-    <!-- Two jobs, two layouts. Triage puts the ranked queue first and shrinks
-         the map to context; Explore gives the map the whole stage. -->
-    <div class="seg mode" role="group" aria-label="Mode">
-      <button id="m-triage"  aria-pressed="true"
-        title="Work the ranked list of people who have gone quiet.">Triage</button>
-      <button id="m-explore" aria-pressed="false"
-        title="The whole population on a full-width map.">Explore</button>
+        <a href="about.html" class="about-link">Docs</a></p>
     </div>
     <div class="spacer"></div>
     <div class="counters" id="counters" aria-live="polite"></div>
@@ -113,7 +105,7 @@
   <!-- Source order is column order: the grid auto-places these, and #map is
        deliberately last so Triage reads queue, record, map. #map is never
        re-parented once Leaflet has initialised on it; it is placed, not moved. -->
-  <div class="stage" id="stage" data-mode="triage">
+  <div class="stage" id="stage">
     <section class="rail" id="queue" aria-label="People who have gone quiet"></section>
 
     <section class="rail" id="record" aria-label="Selected record">

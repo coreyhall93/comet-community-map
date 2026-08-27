@@ -190,10 +190,6 @@ body {
 .group > .label { margin: 0; }
 
 .seg { display: inline-flex; background: var(--tint); border-radius: 8px; padding: 2px; gap: 2px; }
-/* The mode switch is the one control that changes what the tool is for, so it
-   sits in the masthead at a size the filter bar's segments do not use. */
-.seg.mode { padding: 3px; align-self: center; }
-.seg.mode button { padding: 0.35rem 1.15rem; font-size: var(--t-body); font-weight: 600; }
 .seg button {
   border: 0; background: transparent; color: var(--slate);
   font: inherit; font-size: var(--t-small); font-weight: 550;
@@ -223,16 +219,18 @@ body {
    on text and left the map a strip; worse, it pushed the map out entirely on
    anything smaller. The queue does not lose your place when it steps aside --
    its scroll position and the arrow keys both survive the swap. */
-.stage[data-mode="triage"] {
+.stage {
   grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
 }
-.stage[data-mode="triage"] #record { display: none; }
-.stage[data-mode="triage"].has-record #queue { display: none; }
-.stage[data-mode="triage"].has-record #record { display: block; }
+.stage #record { display: none; }
+.stage.has-record #queue { display: none; }
+.stage.has-record #record { display: block; }
 
-.stage[data-mode="explore"] { grid-template-columns: minmax(0, 1fr); }
-.stage[data-mode="explore"] #queue,
-.stage[data-mode="explore"] #record { display: none; }
+/* Expanded: the rail steps aside and the map takes the stage. A view state, not
+   a mode -- nothing but the control itself can set it. */
+.stage.is-expanded { grid-template-columns: minmax(0, 1fr); }
+.stage.is-expanded #queue,
+.stage.is-expanded #record { display: none; }
 
 /* render() hides panes with the hidden attribute, and .rail sets an explicit
    display, which beats the user-agent [hidden] rule. Without this the queue and
@@ -243,13 +241,13 @@ body {
    genuinely small, and the map never disappears on the way down: it was the
    thing being hidden before, which is the wrong thing to hide on a map. */
 @media (max-width: 900px) {
-  .stage[data-mode="triage"] {
+  .stage:not(.is-expanded) {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: 45vh minmax(0, 1fr);
   }
-  .stage[data-mode="triage"] #map { grid-row: 1; }
-  .stage[data-mode="triage"] #queue,
-  .stage[data-mode="triage"] #record { grid-row: 2; border-right: 0; border-top: 1px solid var(--hair); }
+  .stage:not(.is-expanded) #map { grid-row: 1; }
+  .stage:not(.is-expanded) #queue,
+  .stage:not(.is-expanded) #record { grid-row: 2; border-right: 0; border-top: 1px solid var(--hair); }
 }
 
 /* Source order matters: this and the mode rules have the same specificity, so
@@ -266,8 +264,8 @@ body {
   min-height: 0;
   padding: var(--s-4);
 }
-.stage[data-mode="triage"] #record { border-right: 1px solid var(--hair); }
-.stage[data-mode="explore"] .rail,
+.stage #record { border-right: 1px solid var(--hair); }
+.stage.is-expanded .rail,
 .stage.is-table .rail { border-right: 0; }
 
 /* Selects carry an intrinsic min-width that overflows a narrow column. This
@@ -551,7 +549,7 @@ td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(-
 .leaflet-popup-content { font-family: var(--sans); font-size: var(--t-small); }
 
 @media (max-width: 760px) {
-  .stage[data-mode="explore"] { grid-template-rows: minmax(0, 1fr); }
+  .stage.is-expanded { grid-template-rows: minmax(0, 1fr); }
   .rail { border-right: 0; border-top: 1px solid var(--hair); }
   .masthead { padding: var(--s-3) var(--s-4); }
   .controls { padding: var(--s-2) var(--s-4); }
@@ -823,3 +821,23 @@ th.no-sort { cursor: default; opacity: .72; }
    scroll, while .app itself was correctly 820. This is the same reasoning as
    minmax(0, 1fr) on the map track, applied one level up. */
 .app > * { min-width: 0; }
+
+/* Expand, styled as the other map controls are so it reads as part of the map. */
+.cm-expand a {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; color: var(--ink); background: var(--panel);
+}
+.cm-expand a:hover { background: var(--tint); }
+.cm-expand svg { display: block; }
+
+/* Two headline numbers, sized like the answer to a question rather than like a
+   row of dashboard tiles. */
+.counter.headline { cursor: pointer; padding-top: var(--s-2); min-width: 7.5rem; }
+.counter.headline .n { font-size: 2rem; letter-spacing: -0.02em; }
+.counter.headline:hover { opacity: .72; }
+.counter.headline.is-on .k::after { content: " ✕"; opacity: .75; }
+.counter.headline .k::after { content: " ▾"; opacity: .3; }
+
+/* The status breakdown, demoted from headline to supporting fact. */
+.breakdown { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: var(--s-3) 0 var(--s-2); }
+.hint.coverage { margin-bottom: var(--s-4); }

@@ -49,10 +49,14 @@
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
     a11n: [], meetups: [], selectedMeetup: null,
-    // Two jobs, two layouts. Kept orthogonal to `view` (map/table) on purpose:
-    // merging them would turn one extra branch in render() into six
-    // combinations, most of which mean nothing.
-    mode: "triage",
+    // A view toggle, not a mode. Expanding hides the rail and gives the map the
+    // whole stage; nothing else about the tool changes, and nothing you click
+    // can flip it back on you. It replaced a Triage/Explore pair where picking
+    // someone on the map silently switched mode AND moved the map -- two
+    // surprises for one click.
+    mapExpanded: false,
+    // Which headline number is being used as a filter, if either.
+    headlineFilter: "", headline: null,
     _focusToken: 0,
     // The queue's memory. Inspecting someone used to destroy the ranked list
     // you were working through and return you to the top of it. These three
@@ -123,7 +127,6 @@
    * would be a plaintext accusation with a person attached, sitting in Slack
    * and in browser history. `st` is a filter over the whole list and is
    * independent of who is selected; keep it that way. */
-  var HASH_MODE = { t: "triage", e: "explore" };
   var HASH_VIEW = { m: "map", t: "table" };
   var HASH_POP  = { r: "roster", a: "all" };
 
@@ -135,7 +138,7 @@
 
   function encodeState() {
     var parts = [];
-    parts.push("m=" + (state.mode === "explore" ? "e" : "t"));
+    if (state.mapExpanded) parts.push("x=1");
     if (state.view !== "map") parts.push("v=t");
     /* Place and population are written even at their defaults. That pair has
      * already moved once and is expected to move again; if omission meant
@@ -197,7 +200,7 @@
   function applyStateFromHash() {
     var h = parseHash(), touched = false;
 
-    if (h.m && HASH_MODE[h.m])   { state.mode = HASH_MODE[h.m]; touched = true; }
+    if (h.x != null) { state.mapExpanded = h.x === "1"; touched = true; }
     if (h.v && HASH_VIEW[h.v])   { state.view = HASH_VIEW[h.v]; touched = true; }
     if (h.pop && HASH_POP[h.pop]) { state.pop = HASH_POP[h.pop]; touched = true; }
     if (h.pl != null) { state.place = h.pl === "*" ? "" : h.pl; touched = true; }
@@ -254,7 +257,7 @@
     if ((el = $("v-table")))  el.setAttribute("aria-pressed", String(state.view === "table"));
     if ((el = $("p-roster"))) el.setAttribute("aria-pressed", String(state.pop === "roster"));
     if ((el = $("p-all")))    el.setAttribute("aria-pressed", String(state.pop === "all"));
-    syncModeButtons();
+    syncExpandButton();
     OVERLAYS.forEach(function (d) {
       var b = $("l-" + d.id);
       if (b) b.setAttribute("aria-pressed", state.overlays[d.id] ? "true" : "false");
@@ -375,6 +378,8 @@
       if (state.pop === "roster" && p.tier === "community") return false;
       if (!matchPlace(p)) return false;
       if (state.usState && p.usState !== state.usState) return false;
+      if (state.headlineFilter === "quiet" &&
+          p.status !== "dormant" && p.status !== "inactive") return false;
       if (state.status && p.status !== state.status) return false;
       if (q) {
         var hay = (p.name + " " + (p.city || "") + " " + (p.country || "") + " " +
@@ -508,31 +513,53 @@
 
   /* --- counters ---------------------------------------------------------- */
 
+  /* Two numbers, not eight.
+   *
+   * The masthead used to carry in-view, active, new, slowing, dormant, unknown,
+   * on-the-map and no-location, all the same size, as though the tool were a
+   * dashboard. It is not: it asks one question, and only two of those eight
+   * answered it. The other six are facts about the dataset, so they moved to
+   * the queue header where the list they describe actually is.
+   *
+   * Both of these are live filters, so nothing that was clickable stopped
+   * being clickable -- and every status is still reachable from the Status
+   * control, which is where you would look for it. */
   function renderCounters(list) {
-    var n = { active: 0, new: 0, slowing: 0, dormant: 0, inactive: 0, unknown: 0 };
-    list.forEach(function (p) { n[p.status] = (n[p.status] || 0) + 1; });
-    var mapped   = list.filter(function (p) { return p.lat != null; }).length;
-    var unplaced = list.length - mapped;
+    var quiet = list.filter(function (p) {
+      return p.status === "dormant" || p.status === "inactive";
+    });
+    var reachable = 0;
+    quiet.forEach(function (p) {
+      if (nearestActive(p, list, 1).length) reachable++;
+    });
+    state.headline = { quiet: quiet.length, reachable: reachable, total: list.length };
 
     $("counters").innerHTML =
-      cell("in view",    list.length,  "", "")        +
-      cell("active",     n.active,     "is-active",  "active")  +
-      cell("new",        n.new,        "is-new",     "new")     +
-      cell("slowing",    n.slowing,    "is-slowing", "slowing") +
-      cell("dormant",    n.dormant,    "is-dormant", "dormant") +
-      cell("unknown",    n.unknown,    "is-unknown", "unknown") +
-      cell("on the map", mapped,       "", "")        +
-      cell("no location", unplaced,    "is-muted",   "", "These people are counted but cannot be placed: no location on their .org profile, or their profile has not been read yet.");
+      headlineCell("gone quiet", quiet.length, "is-dormant", "quiet",
+        "People no source has seen in over 90 days. These are who the tool is for.") +
+      headlineCell("reachable now", reachable, "is-active", "reachable",
+        "Of those, the ones with an active person within " + state.radiusMi +
+        " miles. Someone can be asked to make contact today.");
 
     Array.prototype.forEach.call($("counters").children, function (el) {
-      if (!el.dataset.status) return;
+      if (!el.dataset.pick) return;
       el.onclick = function () {
-        state.status = (state.status === el.dataset.status) ? "" : el.dataset.status;
+        var was = state.headlineFilter;
+        state.headlineFilter = was === el.dataset.pick ? "" : el.dataset.pick;
+        state.status = "";
+        if ($("f-status")) $("f-status").value = "";
         state.page = 0;
-        if ($("f-status")) $("f-status").value = state.status;
         render();
       };
     });
+  }
+
+  function headlineCell(k, v, cls, pick, title) {
+    var on = state.headlineFilter === pick;
+    return '<button class="counter headline ' + cls + (on ? " is-on" : "") +
+      '" data-pick="' + pick + '" aria-pressed="' + on + '" title="' + esc(title) + '">' +
+      '<span class="n tabular">' + v.toLocaleString() + '</span>' +
+      '<span class="k">' + k + "</span></button>";
   }
 
   function cell(k, v, cls, status, title) {
@@ -1157,6 +1184,45 @@
     state.keyCtl.addTo(state.map);
   }
 
+  /* Expand, where every map already puts it: in the control stack, as the
+   * corner-arrows icon people already know. It was briefly a Triage/Explore
+   * pair in the masthead, which made it a mode -- and a mode that other clicks
+   * could flip. A map control cannot be triggered by anything but itself. */
+  function addExpandControl() {
+    if (!state.map || state.expandCtl) return;
+    var OUT = '<path d="M9 3H3v6"></path><path d="M3 3l7 7"></path>' +
+              '<path d="M15 21h6v-6"></path><path d="M21 21l-7-7"></path>';
+    var IN  = '<path d="M3 9h6V3"></path><path d="M10 10L3 3"></path>' +
+              '<path d="M21 15h-6v6"></path><path d="M14 14l7 7"></path>';
+    function svg(paths) {
+      return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+             'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+             'stroke-linejoin="round" aria-hidden="true">' + paths + "</svg>";
+    }
+    var Ctl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: function () {
+        var wrap = L.DomUtil.create("div", "leaflet-bar leaflet-control cm-expand");
+        var a = L.DomUtil.create("a", "", wrap);
+        a.href = "#";
+        a.id = "map-expand";
+        a.setAttribute("role", "button");
+        a.setAttribute("aria-pressed", "false");
+        a.setAttribute("aria-label", "Expand the map");
+        a.innerHTML = svg(OUT);
+        L.DomEvent.disableClickPropagation(wrap);
+        L.DomEvent.on(a, "click", L.DomEvent.stop);
+        L.DomEvent.on(a, "click", function () {
+          setMapExpanded(!state.mapExpanded);
+          a.innerHTML = svg(state.mapExpanded ? IN : OUT);
+        });
+        return wrap;
+      }
+    });
+    state.expandCtl = new Ctl();
+    state.expandCtl.addTo(state.map);
+  }
+
   function addResetControl() {
     if (!state.map || state.resetCtl) return;
     var Ctl = L.Control.extend({
@@ -1185,7 +1251,7 @@
   }
 
   function renderMap(list) {
-    if (!state.map) { initMap(); addResetControl(); addKeyControl(); }
+    if (!state.map) { initMap(); addExpandControl(); addResetControl(); addKeyControl(); }
     state.layer.clearLayers();
     state.markers = {};
     var placed = list.filter(function (p) { return p.lat != null; });
@@ -1304,10 +1370,11 @@
    * opening a record destroyed the queue you were working through. It is now
    * two panes rendered independently. renderSide stays as the orchestrator
    * because fourteen call sites reach for it, and none of them care. */
-  function syncModeButtons() {
-    var a = $("m-triage"), b = $("m-explore");
-    if (a) a.setAttribute("aria-pressed", String(state.mode === "triage"));
-    if (b) b.setAttribute("aria-pressed", String(state.mode === "explore"));
+  function syncExpandButton() {
+    var b = $("map-expand");
+    if (!b) return;
+    b.setAttribute("aria-pressed", String(state.mapExpanded));
+    b.title = state.mapExpanded ? "Show the list again" : "Give the map the whole width";
   }
 
   function renderSide(list) {
@@ -1375,7 +1442,9 @@
     // nearestActive() once per quiet person, which is the sweep the comment
     // below says had to be hoisted out of the comparator. Do not pay for it in
     // a mode where the column is not on screen.
-    if (state.mode !== "triage") { state.queueKeys = []; side.innerHTML = ""; return; }
+    // Still built while the map is expanded: the rail is hidden, not gone, and
+    // the arrow keys must have something to walk the moment it returns.
+    if (!side.offsetParent && state.queueKeys.length) return;
 
     // renderSide captured this before the swap could hide the column.
     var prevScroll = state.queueScroll;
@@ -1418,6 +1487,13 @@
       return;
     }
 
+    // The status breakdown and the coverage numbers, next to the list they are
+    // about. They were headline figures in the masthead, which gave a dataset
+    // fact the same weight as the question the tool exists to answer.
+    var n = { active: 0, new: 0, slowing: 0, dormant: 0, inactive: 0, unknown: 0 };
+    list.forEach(function (p) { n[p.status] = (n[p.status] || 0) + 1; });
+    var mapped = list.filter(function (p) { return p.lat != null; }).length;
+
     var recent = quiet.filter(function (p) { return p.status === "dormant"; }).length;
     var withLead = quiet.filter(function (p) { return hasNeighbour[keyOf(p)]; }).length;
     var html = pendingHTML() +
@@ -1426,7 +1502,20 @@
       state.radiusMi + " miles, and are listed first — those are the ones you can act on " +
       "today. " + recent + " went quiet within the last year. Anyone with nobody in range " +
       "sits at the bottom: that is a coverage gap, not a lead." +
-      ' <span class="subtle">&uarr; &darr; to move through them, Esc to come back.</span></p>';
+      ' <span class="subtle">&uarr; &darr; to move through them, Esc to come back.</span></p>' +
+      // What the masthead used to shout. Same numbers, next to the list they
+      // describe, at the size a supporting fact deserves.
+      '<div class="breakdown">' +
+        ["active", "new", "slowing", "dormant", "inactive", "unknown"]
+          .filter(function (k) { return n[k]; })
+          .map(function (k) {
+            return '<button class="chip ' + k + (state.status === k ? " on" : "") +
+                   '" data-bstatus="' + k + '">' + k + " " + n[k].toLocaleString() + "</button>";
+          }).join("") +
+      "</div>" +
+      '<p class="hint coverage">' + mapped.toLocaleString() + " of " +
+        list.length.toLocaleString() + " are on the map. The rest never filled in a " +
+        "location, so they are counted here but cannot be placed.</p>";
 
     // The arrow keys walk exactly what is drawn, so the order is recorded here
     // rather than recomputed in the handler, where it could drift out of sync.
@@ -1481,6 +1570,17 @@
     // Assigning scrollTop to a hidden element does not stick, so this runs
     // again on the way back when the queue is visible.
     if (side.offsetParent !== null) side.scrollTop = prevScroll;
+    Array.prototype.forEach.call(side.querySelectorAll("[data-bstatus]"), function (el) {
+      el.onclick = function () {
+        var k = el.dataset.bstatus;
+        state.status = state.status === k ? "" : k;
+        state.headlineFilter = "";
+        if ($("f-status")) $("f-status").value = state.status;
+        state.page = 0;
+        render();
+      };
+    });
+
     var more = $("queue-more");
     if (more) more.onclick = function () {
       // Keep the scroll where it is: the point of showing more is to carry on
@@ -2021,7 +2121,9 @@
     // hands you to Triage on that person rather than making you flip modes.
     // Must happen before renderSide(), or the queue does not exist yet and
     // queueKeys stays empty, which breaks the arrow keys on arrival.
-    if (state.mode === "explore") applyMode("triage");
+    // Deliberately does NOT collapse the map. Clicking someone used to switch
+    // mode and re-frame the map at once, so a single click moved two things
+    // nobody asked it to move.
     state.lastViewed = keyOf(p);
     state.selected = p;
     state.selectedMeetup = null;
@@ -2041,7 +2143,10 @@
       // In Triage the record column already shows everything the popup would,
       // and opening one triggers Leaflet autoPan -> moveend -> repaintSelection,
       // which is a full proximity sweep. Pure cost.
-      if (state.mode !== "triage" && m && m.openPopup) m.openPopup();
+      // A popup only earns its place when the record pane is off screen. With
+      // the rail showing it repeats the record and costs a re-render through
+      // Leaflet's autoPan.
+      if (state.mapExpanded && m && m.openPopup) m.openPopup();
     });
   }
 
@@ -2143,7 +2248,6 @@
    * position per person. Deliberately does not wrap: running off the end of a
    * work list should stop, not silently restart it. */
   function stepQueue(delta) {
-    if (state.mode !== "triage") return;
     var keys = state.queueKeys;
     if (!keys.length) return;
     var cur = state.lastViewed ? keys.indexOf(state.lastViewed) : -1;
@@ -2248,7 +2352,7 @@
     // The mode is stamped on the stage, and the CSS does the layout. Written
     // before renderMap() runs, because fitBounds measures the pane and would
     // otherwise measure the track width the previous mode had.
-    $("stage").dataset.mode = state.mode;
+    $("stage").classList.toggle("is-expanded", state.mapExpanded);
     if (state.view === "map") {
       $("map").hidden = false; $("queue").hidden = false; $("record").hidden = false;
       $("tablewrap").hidden = true;
@@ -2269,36 +2373,19 @@
   /* Not built on toggle(): switching mode has side effects that a plain state
    * write plus render() does not cover -- Leaflet has to be told its pane
    * resized, and the spiderfy spread is tuned per pane width. */
-  /* Everything a mode change means except repainting. Split out because
-   * select() switches mode mid-flight and must not re-enter render(), but must
-   * still stamp the stage -- the CSS reads the attribute, not the variable, so
-   * setting state.mode alone leaves the layout in the old mode. */
-  function applyMode(m) {
-    state.mode = m;
-    $("stage").dataset.mode = m;
-    syncModeButtons();
-    // The fan a cluster opens into is measured in pixels, so a spread tuned for
-    // a 1100px map throws markers off the edge of a 500px one. markercluster
-    // reads this per spiderfy, so changing it live works.
-    var spread = m === "triage" ? 1.6 : 2.6;
-    if (state.layer) state.layer.options.spiderfyDistanceMultiplier = spread;
-    Object.keys(state.overlayLayers).forEach(function (id) {
-      if (state.overlayLayers[id]) state.overlayLayers[id].options.spiderfyDistanceMultiplier = spread;
-    });
-  }
-
-  function setMode(m) {
-    if (state.mode === m) return;
-    applyMode(m);
+  /* Expanding is a view change and nothing else. It repaints, tells Leaflet its
+   * pane resized, and stops. It does not move the map, change what is selected,
+   * or alter what any other control means. */
+  function setMapExpanded(on) {
+    if (state.mapExpanded === on) return;
+    state.mapExpanded = on;
+    syncExpandButton();
     render();
     if (state.map) {
-      // Two frames, not one: a grid-template change committed this tick is not
-      // guaranteed to have been laid out by the next frame on every engine.
+      // Two frames: a grid-template change committed this tick is not
+      // guaranteed to have been laid out by the next one on every engine.
       requestAnimationFrame(function () {
-        requestAnimationFrame(function () {
-          state.map.invalidateSize();
-          if (state.mode === "triage" && state.selected) focusOnMap(state.selected);
-        });
+        requestAnimationFrame(function () { state.map.invalidateSize(); });
       });
     }
   }
@@ -2359,9 +2446,8 @@
     document.title = "Community Map — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
     toggle("p-roster", "p-all", "pop", "roster", "all");
-    $("m-triage").onclick  = function () { setMode("triage"); };
-    $("m-explore").onclick = function () { setMode("explore"); };
-    syncModeButtons();
+
+    syncExpandButton();
     // Reflect the landing population on the buttons toggle() did not set.
     $("p-roster").setAttribute("aria-pressed", String(state.pop === "roster"));
     $("p-all").setAttribute("aria-pressed", String(state.pop === "all"));
@@ -2402,7 +2488,9 @@
 
     $("set-btn").onclick = function () {
       // The set panel renders into the record column, which Explore hides.
-      if (state.mode === "explore" && !state.showSet) { setMode("triage"); }
+      // The set panel renders into the record column, so opening it brings the
+      // rail back rather than rendering into something nobody can see.
+      if (state.mapExpanded && !state.showSet) setMapExpanded(false);
       state.showSet = !state.showSet;
       if (state.showSet) { state.selected = null; state.selectedMeetup = null; }
       renderSetCount();
@@ -2445,7 +2533,7 @@
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       // These panels used to destroy the queue, so stepping through it while
       // one was open made no sense. They no longer do.
-      if (state.mode !== "triage") return;
+      if (state.mapExpanded) return;
       if (e.key === "Escape") {
         if (!state.selected) return;
         e.preventDefault(); closeRecord(); return;
@@ -2463,7 +2551,10 @@
 
     // The mode from the link has to be on the stage before the first paint, or
     // renderMap measures the track width of the mode we are leaving.
-    applyMode(state.mode);
+    // Stamp the expanded state before the first paint, so renderMap measures
+    // the track it is actually going to get.
+    $("stage").classList.toggle("is-expanded", state.mapExpanded);
+    syncExpandButton();
     syncControls();
     render();
     // A person arriving by link goes through select(), so the link produces

@@ -7,76 +7,161 @@
 <title>Docs — Community Map</title>
 <link rel="stylesheet" href="assets/css/app.css">
 <style>
-  .wrap { max-width: var(--measure); margin: 0 auto; padding: var(--s-6) var(--s-4) 5rem; }
-  h1 { font-size: var(--t-display); line-height: 1.15; letter-spacing: -0.02em; margin: 0 0 var(--s-2); }
-  h2 { font-size: var(--t-h2); margin: var(--s-7) 0 var(--s-2); letter-spacing: -0.01em; }
-  h3 { font-size: var(--t-body); margin: var(--s-5) 0 var(--s-2); }
-  p  { margin: 0 0 var(--s-3); }
-  .sub { color: var(--slate); font-size: var(--t-h3); line-height: 1.5; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-4); }
-  th { text-align: left; font-size: var(--t-label); letter-spacing: 0.09em; text-transform: uppercase;
-       color: var(--faint); font-weight: 700; padding: 0 var(--s-3) var(--s-1) 0;
-       border-bottom: 1px solid var(--hair); }
-  td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair);
-       vertical-align: top; font-size: var(--t-small); }
+  /* ============================================================
+     Docs shell: a persistent section list on the left, the content in the
+     middle, and what-is-on-this-page on the right. The single scrolling column
+     it replaced made a 12,000-character page feel like a wall, and gave no
+     answer to "what else is in here".
+     ============================================================ */
+  body { background: var(--ground); margin: 0; }
+
+  .docbar {
+    position: sticky; top: 0; z-index: 20;
+    display: flex; align-items: center; gap: var(--s-4);
+    padding: var(--s-3) var(--s-5);
+    background: var(--panel); border-bottom: 1px solid var(--hair);
+  }
+  .docbar .spacer { flex: 1 1 auto; }
+  .wordmark { font-weight: 650; color: var(--ink); text-decoration: none; font-size: var(--t-h3); }
+  .wordmark span { color: var(--faint); font-weight: 550; }
+  .docbar-link { font-size: var(--t-small); color: var(--slate); text-decoration: none; }
+  .docbar-link:hover { color: var(--ink); }
+
+  .doclayout {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr) 14rem;
+    gap: var(--s-6);
+    max-width: 84rem; margin: 0 auto;
+    padding: var(--s-5) var(--s-5) var(--s-6);
+    align-items: start;
+  }
+
+  /* Both rails stick; only the middle scrolls, which is the whole point. */
+  .docnav, .docaside {
+    position: sticky; top: 4.5rem;
+    max-height: calc(100vh - 6rem); overflow-y: auto;
+  }
+  .docnav a {
+    display: block; padding: var(--s-1) var(--s-2);
+    margin: 0 calc(var(--s-2) * -1);
+    border-radius: 8px;
+    font-size: var(--t-small); color: var(--slate); text-decoration: none;
+  }
+  .docnav a:hover { color: var(--ink); background: var(--tint); }
+  /* Current section: a tint and a heavier weight, never a coloured edge. */
+  .docnav a.on { background: var(--tint); color: var(--ink); font-weight: 600; }
+  .nav-group {
+    font-size: var(--t-label); letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--faint); font-weight: 700;
+    margin: var(--s-4) 0 var(--s-1);
+  }
+  .nav-group:first-child { margin-top: 0; }
+
+  .doccontent { min-width: 0; max-width: 46rem; }
+  .doccontent h1 {
+    font-size: var(--t-display); line-height: 1.15; letter-spacing: -0.02em;
+    margin: 0 0 var(--s-3); font-weight: 650;
+  }
+  .lead { font-size: 1.12rem; line-height: 1.55; color: var(--slate); margin: 0 0 var(--s-6); }
+  .doccontent h2 {
+    font-size: var(--t-h2); font-weight: 650; letter-spacing: -0.01em;
+    margin: var(--s-6) 0 var(--s-3); padding-top: var(--s-2);
+    border-top: 1px solid var(--hair);
+  }
+  .doccontent h2:first-of-type { border-top: 0; margin-top: 0; }
+  .doccontent h3 { font-size: var(--t-h3); font-weight: 600; margin: var(--s-5) 0 var(--s-2); }
+  .doccontent p { margin: 0 0 var(--s-3); line-height: 1.6; }
+  .doccontent ul { margin: 0 0 var(--s-3); padding-left: 1.15rem; }
+  .doccontent li { margin-bottom: var(--s-2); line-height: 1.55; }
+  .doccontent a { color: var(--accent); }
+  .doccontent a:hover { color: var(--ink); }
+  code {
+    font-family: var(--mono); font-size: 0.88em;
+    background: var(--tint); padding: 0.1rem 0.32rem; border-radius: 5px;
+  }
+
+  table { border-collapse: collapse; width: 100%; margin: 0 0 var(--s-4); }
+  th {
+    text-align: left; font-size: var(--t-label); letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--faint); font-weight: 700;
+    padding: 0 var(--s-3) var(--s-1) 0; border-bottom: 1px solid var(--hair);
+  }
+  td {
+    padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair);
+    vertical-align: top; font-size: var(--t-small); line-height: 1.5;
+  }
   td:first-child { white-space: nowrap; font-weight: 550; color: var(--ink); }
   td.wrap-first:first-child { white-space: normal; }
 
-  /* Table of contents. Flat list of anchors -- this page is read by someone
-     hunting one answer, not front to back. */
-  .toc { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-4);
-         padding: var(--s-3) 0; border-top: 1px solid var(--hair);
-         border-bottom: 1px solid var(--hair); margin-bottom: var(--s-5); }
-  .toc a { font-size: var(--t-small); }
-
-  /* Callout. No coloured rail -- weight and ground do the work. */
-  .note { background: var(--tint); border-radius: 10px; padding: var(--s-3) var(--s-4);
-          margin: 0 0 var(--s-4); font-size: var(--t-small); color: var(--slate); }
+  .note {
+    background: var(--tint); border-radius: var(--radius);
+    padding: var(--s-3) var(--s-4); margin: 0 0 var(--s-4);
+    font-size: var(--t-small); line-height: 1.55; color: var(--slate);
+  }
   .note strong { color: var(--ink); }
 
-  pre { background: var(--tint); border-radius: 10px; padding: var(--s-4);
-        overflow-x: auto; margin: 0 0 var(--s-3); }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.86rem;
-         color: var(--ink); }
-  p code, li code, td code { background: var(--tint); padding: 0.1rem 0.35rem; border-radius: 4px; }
-  ol, ul { margin: 0 0 var(--s-4); padding-left: 1.2rem; }
-  li { margin-bottom: var(--s-2); font-size: var(--t-small); color: var(--slate); line-height: 1.55; }
-  li strong { color: var(--ink); }
-
-  /* Narrow screens. The first column is nowrap so short labels ("Roster",
-     "active") do not wrap mid-word on a wide screen, but that same rule forces
-     the data-sources table to 427px inside a 390px phone and pushes the whole
-     page sideways. Let it wrap when there is no room, and give any table that
-     still cannot fit its own horizontal scroll so the page itself never moves. */
-  @media (max-width: 560px) {
-    .wrap { padding-left: var(--s-3); padding-right: var(--s-3); }
-    td:first-child { white-space: normal; }
-    table { display: block; overflow-x: auto; }
-    pre { font-size: 0.78rem; }
+  .aside-title, .nav-group { user-select: none; }
+  .aside-title {
+    font-size: var(--t-label); letter-spacing: 0.09em; text-transform: uppercase;
+    color: var(--faint); font-weight: 700; margin: 0 0 var(--s-2);
   }
-</style>
+  .docaside a {
+    display: block; font-size: var(--t-small); color: var(--slate);
+    text-decoration: none; padding: var(--s-1) 0; line-height: 1.4;
+  }
+  .docaside a:hover { color: var(--ink); }
+  .aside-empty { font-size: var(--t-small); color: var(--faint); margin: 0; }
+  .aside-actions { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--hair); }
+
+  /* The right rail is the first thing to go: it is a convenience, and the left
+     nav is navigation. Below that, the left rail becomes a normal block above
+     the content rather than a column squeezing it. */
+  @media (max-width: 1100px) {
+    .doclayout { grid-template-columns: 14rem minmax(0, 1fr); }
+    .docaside { display: none; }
+  }
+  @media (max-width: 780px) {
+    .doclayout { grid-template-columns: minmax(0, 1fr); gap: var(--s-4); }
+    .docnav {
+      position: static; max-height: none;
+      padding-bottom: var(--s-3); border-bottom: 1px solid var(--hair);
+    }
+    .doccontent h1 { font-size: 1.5rem; }
+  }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <p class="label"><a href="index.html">← Map</a></p>
-  <h1>Community Map</h1>
-  <p class="sub">Who in the WordPress community has gone quiet, and who active is near
-  enough to reach them.</p>
+<header class="docbar">
+  <a class="wordmark" href="index.html">Community Map <span>Docs</span></a>
+  <div class="spacer"></div>
+  <a class="docbar-link" href="index.html">&larr; Back to the map</a>
+</header>
 
-  <nav class="toc">
-    <a href="#what">What this is</a>
-    <a href="#using">Using it</a>
-    <a href="#read">How to read it</a>
-    <a href="#roles">Roles</a>
-    <a href="#data">Where the data comes from</a>
-    <a href="#limits">What it cannot see</a>
-    <a href="#fix">Correcting something</a>
-    <a href="#claude">Using it with Claude</a>
+<div class="doclayout">
+  <!-- Left: the sections, grouped. Persistent, so you always know where you are
+       and what else there is. -->
+  <nav class="docnav" aria-label="Sections">
+      <p class="nav-group">Start</p>
+      <a href="#what" data-sec="what">What this is</a>
+      <a href="#using" data-sec="using">Using it</a>
+      <p class="nav-group">Reading it</p>
+      <a href="#read" data-sec="read">How to read it</a>
+      <a href="#roles" data-sec="roles">Roles</a>
+      <p class="nav-group">The data</p>
+      <a href="#data" data-sec="data">Where the data comes from</a>
+      <a href="#limits" data-sec="limits">What it cannot see</a>
+      <p class="nav-group">Contributing</p>
+      <a href="#fix" data-sec="fix">Correcting something</a>
+      <a href="#claude" data-sec="claude">Using it with Claude</a>
   </nav>
 
-  <h2 id="what">What this is</h2>
+  <main class="doccontent">
+    <h1>Community Map documentation</h1>
+    <p class="lead">Who in the WordPress community has gone quiet, and who active is
+    near enough to reach them. This page explains what the tool shows, where every
+    number comes from, and what it cannot see.</p>
+
+<h2 id="what">What this is</h2>
   <p>Every member of the two Make WordPress community Slack channels, joined to their
   WordPress.org profile, placed on a map, and labelled with how recently they have been
   visible. Select anyone and the panel shows the closest <em>active</em> people to them.</p>
@@ -98,8 +183,7 @@
     <tr><td>Community</td><td>Everyone else in <code>#community-events</code> or
       <code>#community-team</code></td><td>6,936</td></tr>
   </table>
-
-  <h2 id="using">Using it</h2>
+<h2 id="using">Using it</h2>
 
   <h3>Two modes</h3>
   <p>The switch at the top decides what the tool is for at that moment.</p>
@@ -160,8 +244,7 @@
   shared, and it does not travel in a link.</p>
   <p>The button under the zoom controls returns the map to the view your current filters
   would give it, for when you have flown in on someone and changed your mind.</p>
-
-  <h2 id="read">How to read it</h2>
+<h2 id="read">How to read it</h2>
   <h3>Status</h3>
   <table>
     <tr><th>Status</th><th>Means</th></tr>
@@ -204,8 +287,7 @@
   </table>
   <p>Selecting a person zooms to them so you can see who surrounds them. Clicking any of
   their nearby people selects that person in turn.</p>
-
-  <h2 id="roles">Roles</h2>
+<h2 id="roles">Roles</h2>
   <table>
     <tr><td class="wrap-first">Event Supporter</td><td>Mentors event organizers, checks on
       dormant meetups, can vet meetup applications.</td></tr>
@@ -217,8 +299,7 @@
     <tr><td class="wrap-first">Not on roster</td><td>Vetting applications or answering
       organizers without being listed anywhere.</td></tr>
   </table>
-
-  <h2 id="data">Where the data comes from</h2>
+<h2 id="data">Where the data comes from</h2>
   <table>
     <tr><th>Signal</th><th>Source</th></tr>
     <tr><td>Identity</td><td>A Make WP Slack account's email is
@@ -252,8 +333,7 @@
   <p>If one source falls behind the others, someone quiet in it may simply not have been
   swept since. That is why status is the freshest signal across all of them rather than any
   single one.</p>
-
-  <h2 id="limits">What it cannot see</h2>
+<h2 id="limits">What it cannot see</h2>
   <ul>
     <li><strong>Coverage is uneven between sources.</strong> Slack sees
       4,219 people, GitHub 153 and Help Scout
@@ -273,8 +353,7 @@
   </ul>
   <p>The map tells you <em>who to ask</em>. It does not tell you what is going on in
   someone's life, and it is not evidence of anything on its own.</p>
-
-  <h2 id="fix">Correcting something</h2>
+<h2 id="fix">Correcting something</h2>
   <p>You will know things the data does not. Corrections beat every automated source.</p>
   <ol>
     <li>Select the person and click <strong>Suggest a correction</strong>. It shows their
@@ -290,8 +369,7 @@
   </div>
   <p>Corrections are applied on the next rebuild, so allow a day. They are not instant, and
   nothing you type on the map page itself is saved.</p>
-
-  <h2 id="claude">Using it with Claude</h2>
+<h2 id="claude">Using it with Claude</h2>
   <p>The map answers "who is near this person." For anything more specific, take the data to
   an AI agent. No setup, no connector.</p>
   <ol>
@@ -324,6 +402,80 @@ bring back.</code></pre>
   <h2>Questions</h2>
   <p>Ask Corey. If something looks wrong, it probably is, and saying so is the fastest way
   the data gets better.</p>
+
+    <h2 id="questions">Questions</h2>
+    <p>Ask Corey. If something looks wrong about a specific person, it probably is,
+    and the correction path above is the fastest way to fix it for everyone.</p>
+  </main>
+
+  <!-- Right: what is on this page, the way a docs site does it. -->
+  <aside class="docaside" aria-label="On this page">
+    <p class="aside-title">On this page</p>
+    <div id="onthispage"></div>
+    <div class="aside-actions">
+      <a href="index.html">&#8593; Back to the map</a>
+      <a href="#" id="to-top">&#8593; Scroll to top</a>
+    </div>
+  </aside>
 </div>
+
+<script>
+(function () {
+  // "On this page" lists the sub-headings of whatever section you are reading,
+  // which is what makes a long single page navigable at all.
+  var secs = [].slice.call(document.querySelectorAll("main h2[id]"));
+  var navLinks = [].slice.call(document.querySelectorAll(".docnav a"));
+  var otp = document.getElementById("onthispage");
+
+  function subsOf(h2) {
+    var out = [], el = h2.nextElementSibling;
+    while (el && el.tagName !== "H2") {
+      if (el.tagName === "H3") out.push(el);
+      el = el.nextElementSibling;
+    }
+    return out;
+  }
+  secs.forEach(function (s, i) {
+    subsOf(s).forEach(function (h3, j) {
+      if (!h3.id) h3.id = s.id + "-" + j;
+    });
+  });
+
+  function paint(active) {
+    navLinks.forEach(function (a) {
+      a.classList.toggle("on", a.getAttribute("data-sec") === active);
+    });
+    var s = document.getElementById(active);
+    var subs = s ? subsOf(s) : [];
+    otp.innerHTML = subs.length
+      ? subs.map(function (h3) {
+          return '<a href="#' + h3.id + '">' + h3.textContent + "</a>";
+        }).join("")
+      : '<p class="aside-empty">No subsections.</p>';
+  }
+
+  // Whichever section's heading is nearest the top of the viewport wins, so the
+  // highlight tracks reading position rather than jumping on every pixel.
+  function current() {
+    var best = secs[0], bestD = Infinity;
+    secs.forEach(function (s) {
+      var d = Math.abs(s.getBoundingClientRect().top - 90);
+      if (s.getBoundingClientRect().top < 200 && d < bestD) { bestD = d; best = s; }
+    });
+    return best ? best.id : secs[0].id;
+  }
+  var last = "";
+  function tick() {
+    var id = current();
+    if (id !== last) { last = id; paint(id); }
+  }
+  document.addEventListener("scroll", tick, { passive: true });
+  window.addEventListener("resize", tick);
+  tick();
+  document.getElementById("to-top").onclick = function (e) {
+    e.preventDefault(); window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+})();
+</script>
 </body>
 </html>

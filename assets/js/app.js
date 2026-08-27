@@ -33,19 +33,36 @@
     var d = roleDef(r);
     return d ? '<span class="def" tabindex="0" data-def="' + esc(d) + '">' + esc(r) + "</span>" : esc(r);
   }
+
+  /* Holding a Community Team role is an attribute of a person, not a mode of
+   * the tool. It used to be a population toggle -- "Has a role" against
+   * "Everyone in Slack" -- which meant the answer to "how many people are
+   * there" depended on a control, and a shared link could arrive in the other
+   * population without saying so. The toggle is gone. Everyone is always
+   * shown; role-holders are marked wherever a person appears. */
+  function hasRole(p) { return !!p && p.tier !== "community"; }
+
+  /* The badge itself, carrying the role's own definition, so "what is an Event
+   * Supporter" is answered where the label sits rather than in the docs. */
+  function roleTag(p) {
+    if (!hasRole(p)) return "";
+    var d = roleDef(p.role);
+    return ' <span class="tag role' + (d ? " def" : "") + '"' +
+      (d ? ' tabindex="0" data-def="' + esc(d) + '"' : "") + ">" + esc(p.role) + "</span>";
+  }
   var state = {
-    // Landing state: everyone in Slack, in the United States.
-    //
-    // This used to land on the 96 role-holders worldwide, because US + roster
-    // is 11 people and reads as an empty tool. That reasoning was about a
-    // combination this no longer uses: US + everyone is 2,023 people and 637
-    // dots, which is a real map. Do not "fix" this back to global without
-    // checking which population it is paired with.
+    // Landing state: the United States. There is no longer a population to
+    // pair it with -- everyone in the two Slack channels is always shown, so
+    // this cannot land on the 11-person US-plus-role-holders view that made
+    // the tool read as empty. US is 2,023 people and 637 dots, which is a map.
     //
     // `place` is one field, not a region toggle plus a country dropdown. Empty
     // string means Global; any other value is a country name.
-    data: null, view: "map", place: "United States", pop: "all", q: "",
-    status: "", usState: "", rows: 50, page: 0,
+    data: null, view: "map", place: "United States", q: "",
+    // Statuses are a SET, not a choice. "Slowing and active" is a thing you can
+    // want to look at, and a dropdown that allows one made the tool unable to
+    // express it. Empty means all -- no status selected is not "show nobody".
+    statuses: {}, usState: "", rows: 50, page: 0,
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
     a11n: [], meetups: [], selectedMeetup: null,
@@ -55,22 +72,34 @@
     // someone on the map silently switched mode AND moved the map -- two
     // surprises for one click.
     mapExpanded: false,
-    // Which headline number is being used as a filter, if either.
-    headlineFilter: "", headline: null,
+    /* The preset: a saved selection you switch on, driven by the two headline
+     * numbers. "" is off, and off is a legitimate state -- the list is then
+     * whatever the facets select.
+     *
+     * Landing on "quiet" so the tool opens on the job it exists for rather than
+     * on 2,023 undifferentiated rows. It is a toggle, not a mode: clicking the
+     * headline off gives you everyone, and the link carries whichever you left
+     * it on. */
+    preset: "quiet", headline: null,
     _focusToken: 0,
-    // The queue's memory. Inspecting someone used to destroy the ranked list
-    // you were working through and return you to the top of it. These three
-    // fields are what make the queue survive a look at one of its rows:
-    // where you were scrolled, who you last opened, and the order itself so
-    // the arrow keys have something to walk.
-    queueKeys: [], queueScroll: 0, lastViewed: null,
-    // The queue used to stop dead at 60 and point at the table, which does not
-    // carry the ranking at all. It grows on demand instead.
-    queueLimit: 60,
-    // Overlay on/off and the live cluster group, keyed by descriptor id, so
-    // adding a layer never means adding two more state fields.
-    overlays: {}, overlayLayers: {},
-    // Per-layer narrowing, keyed by layer id. Empty string means "all of them".
+    // The list's memory. Inspecting someone used to destroy the ranked list you
+    // were working through and return you to the top of it. These three fields
+    // are what make it survive a look at one of its rows: where you were
+    // scrolled, who you last opened, and the walk order for the arrow keys.
+    // listKeys holds PEOPLE only -- arrow-stepping into a meetup and back out
+    // of a mixed list is not navigation, it is a surprise.
+    listKeys: [], queueScroll: 0, lastViewed: null,
+    // How many rows each section shows before "show more", keyed by section id.
+    // Sections used to stop dead at 60 and point at the table, which carries no
+    // ranking at all.
+    limits: {},
+    // Layer on/off and the live cluster group, keyed by descriptor id, so
+    // adding a layer never means adding two more state fields. People is a
+    // layer like the others now: it can be switched off to look at meetups
+    // alone, which is what "toggle everything" has to mean to be true.
+    overlays: { people: true }, overlayLayers: {},
+    // Per-layer narrowing, keyed by layer id, each a SET of selected values.
+    // An empty set means all of them.
     overlayFilter: {},
     set: [], showSet: false
   };
@@ -94,6 +123,28 @@
   }
   function saveEdits(e) { localStorage.setItem(EDIT_KEY, JSON.stringify(e)); }
   function keyOf(p) { return p.org || p.slack || p.name; }
+
+  /* Facets are sets, and an empty set means "all", not "none".
+   *
+   * Every filter in this tool is now additive: turning on Slowing and Active
+   * asks for either of them, and turning both off asks for all statuses rather
+   * than an empty screen. These four are the whole contract, used identically
+   * by the people statuses and by every layer's own chips, so the two kinds of
+   * chip cannot drift apart in behaviour. */
+  function facetAny(set) {
+    if (!set) return false;
+    for (var k in set) if (set[k]) return true;
+    return false;
+  }
+  function facetOn(set, v) { return !!set && !!set[v]; }
+  function facetMatch(set, v) { return !facetAny(set) || !!set[v]; }
+  function facetToggle(set, v) {
+    if (set[v]) delete set[v]; else set[v] = true;
+    return set;
+  }
+  function facetList(set) {
+    return Object.keys(set || {}).filter(function (k) { return set[k]; });
+  }
 
   function applyEdits(people) {
     var e = loadEdits();
@@ -128,7 +179,9 @@
    * and in browser history. `st` is a filter over the whole list and is
    * independent of who is selected; keep it that way. */
   var HASH_VIEW = { m: "map", t: "table" };
-  var HASH_POP  = { r: "roster", a: "all" };
+  /* No HASH_POP. Links shared before the population toggle was removed carry
+   * `pop=r` or `pop=a`; both are now ignored rather than rejected, so an old
+   * link still opens at the right place and person. */
 
   /* Set while the app writes its own hash, so the listener can tell its echo
    * from a real navigation. Reset on a timeout rather than inline, because some
@@ -140,16 +193,23 @@
     var parts = [];
     if (state.mapExpanded) parts.push("x=1");
     if (state.view !== "map") parts.push("v=t");
-    /* Place and population are written even at their defaults. That pair has
-     * already moved once and is expected to move again; if omission meant
-     * "default", every link shared this week would quietly re-point at a
-     * different population the next time that line is edited. A link is a
-     * promise about what the recipient sees. "*" rather than an empty value
-     * because some chat clients strip a trailing "=". */
+    /* Place is written even at its default. It has already moved once and is
+     * expected to move again; if omission meant "default", every link shared
+     * this week would quietly re-point somewhere else the next time that line
+     * is edited. A link is a promise about what the recipient sees. "*" rather
+     * than an empty value because some chat clients strip a trailing "=". */
     parts.push("pl=" + (state.place ? encodeURIComponent(state.place) : "*"));
-    parts.push("pop=" + (state.pop === "roster" ? "r" : "a"));
     if (state.usState) parts.push("us=" + encodeURIComponent(state.usState));
-    if (state.status) parts.push("st=" + encodeURIComponent(state.status));
+    if (state.preset) parts.push("pr=" + state.preset);
+    var st = facetList(state.statuses);
+    if (st.length) parts.push("st=" + st.join(","));
+    // Layer facets travel too, or "US, active meetups" is a view you can build
+    // and cannot send. Written as layer:value,value;layer:value.
+    var lf = OVERLAYS.map(function (d) {
+      var vals = facetList(state.overlayFilter[d.id]);
+      return vals.length ? d.id + ":" + vals.map(encodeURIComponent).join(",") : "";
+    }).filter(Boolean);
+    if (lf.length) parts.push("lf=" + lf.join(";"));
     if (state.q) parts.push("q=" + encodeURIComponent(state.q));
     if (state.selected) parts.push("p=" + encodeURIComponent(keyOf(state.selected)));
     else if (state.selectedMeetup) {
@@ -202,9 +262,37 @@
 
     if (h.x != null) { state.mapExpanded = h.x === "1"; touched = true; }
     if (h.v && HASH_VIEW[h.v])   { state.view = HASH_VIEW[h.v]; touched = true; }
-    if (h.pop && HASH_POP[h.pop]) { state.pop = HASH_POP[h.pop]; touched = true; }
+    // h.pop is deliberately unread: see HASH_POP above.
     if (h.pl != null) { state.place = h.pl === "*" ? "" : h.pl; touched = true; }
-    if (h.st != null) { state.status = STATUS.indexOf(h.st) === -1 ? "" : h.st; touched = true; }
+    if (h.pr != null) {
+      state.preset = (h.pr === "quiet" || h.pr === "reachable") ? h.pr : "";
+      touched = true;
+    }
+    if (h.st != null) {
+      // Validated one value at a time: an unknown status in a hand-edited link
+      // should be dropped, not allowed to filter the view to zero rows and read
+      // as broken data.
+      state.statuses = {};
+      h.st.split(",").forEach(function (v) {
+        if (STATUS.indexOf(v) !== -1) state.statuses[v] = true;
+      });
+      touched = true;
+    }
+    if (h.lf != null) {
+      OVERLAYS.forEach(function (d) { state.overlayFilter[d.id] = {}; });
+      h.lf.split(";").forEach(function (part) {
+        var i = part.indexOf(":");
+        if (i === -1) return;
+        var def = overlayById(part.slice(0, i));
+        if (!def) return;
+        var set = state.overlayFilter[def.id] = {};
+        part.slice(i + 1).split(",").forEach(function (v) {
+          try { v = decodeURIComponent(v); } catch (e) { /* keep it raw */ }
+          if (v) set[v] = true;
+        });
+      });
+      touched = true;
+    }
     // Validated against the real list, so a hand-edited link cannot filter the
     // view down to zero rows and read as broken data.
     if (h.us != null) {
@@ -251,12 +339,10 @@
     if ((el = $("f-place")))  el.value = state.place;
     buildStateOptions();
     if ((el = $("f-state")))  el.value = state.usState;
-    if ((el = $("f-status"))) el.value = state.status;
+
     if ((el = $("q")))        el.value = state.q;
     if ((el = $("v-map")))    el.setAttribute("aria-pressed", String(state.view === "map"));
     if ((el = $("v-table")))  el.setAttribute("aria-pressed", String(state.view === "table"));
-    if ((el = $("p-roster"))) el.setAttribute("aria-pressed", String(state.pop === "roster"));
-    if ((el = $("p-all")))    el.setAttribute("aria-pressed", String(state.pop === "all"));
     syncExpandButton();
     OVERLAYS.forEach(function (d) {
       var b = $("l-" + d.id);
@@ -364,6 +450,27 @@
     return p.country === state.place;
   }
 
+  /* The same question for a record that carries a country and nothing else --
+   * a meetup group. It cannot use inUS(), which recovers 1,387 people from a US
+   * timezone when their country is blank; a meetup either says where it is or
+   * it does not. */
+  function matchPlaceCountry(c) {
+    if (!state.place) return true;
+    // A US view is a country view for these: State is derived from free text on
+    // .org profiles and meetups have no such field, so narrowing to a state
+    // would silently drop every group rather than filter them.
+    return c === state.place;
+  }
+
+  /* Maruti's dashboard spells three countries differently from the .org
+   * profiles. Left unmapped, a United States view loses all 147 US meetup
+   * groups without an error anywhere. */
+  var MEETUP_COUNTRY = {
+    "USA": "United States",
+    "Czech Republic": "Czechia",
+    "DR Congo": "Democratic Republic of the Congo"
+  };
+
   /* Match on the .org key, never the name: 78 names in this dataset are shared
    * by more than one person, so name matching selects the wrong one. */
   function byKey(key, list) {
@@ -371,23 +478,96 @@
     return null;
   }
 
-  function visible() {
+  function isQuiet(p) { return p.status === "dormant" || p.status === "inactive"; }
+
+  /* THE POPULATION: who is in scope, before any question is asked about them.
+   * Place, state and search only -- deliberately not status, and not the
+   * headline filter.
+   *
+   * This split exists because the headline numbers used to be computed from
+   * the already-filtered list, so clicking "gone quiet" redefined the total
+   * that number was a fraction of, and it changed under the click. A headline
+   * that moves when you press it is not a headline.
+   *
+   * It also fixes reachability. "Nearest active person" was measured against
+   * the filtered list, so narrowing to Dormant removed every active person
+   * from the pool and the whole queue reported "nobody in range" -- the tool
+   * silently answering a different question than the one on screen. Who lives
+   * near someone does not depend on which status chip is pressed. */
+  function population() {
     var d = state.data ? state.data.people : [];
     var q = state.q.trim().toLowerCase();
+    if (!q) {
+      return d.filter(function (p) {
+        return matchPlace(p) && (!state.usState || p.usState === state.usState);
+      });
+    }
     return d.filter(function (p) {
-      if (state.pop === "roster" && p.tier === "community") return false;
       if (!matchPlace(p)) return false;
       if (state.usState && p.usState !== state.usState) return false;
-      if (state.headlineFilter === "quiet" &&
-          p.status !== "dormant" && p.status !== "inactive") return false;
-      if (state.status && p.status !== state.status) return false;
-      if (q) {
-        var hay = (p.name + " " + (p.city || "") + " " + (p.country || "") + " " +
-                   (p.slack || "") + " " + (p.org || "") + " " + (p.employer || "")).toLowerCase();
-        if (hay.indexOf(q) === -1) return false;
-      }
-      return true;
+      // Role is searchable, which is what replaced the population toggle:
+      // typing "Program Supporter" gives you exactly that group.
+      var hay = (p.name + " " + (p.city || "") + " " + (p.country || "") + " " +
+                 (p.slack || "") + " " + (p.org || "") + " " + (p.employer || "") + " " +
+                 (p.role || "")).toLowerCase();
+      return hay.indexOf(q) !== -1;
     });
+  }
+
+  /* The neighbour pool for every proximity question on screen. Held on state
+   * for the duration of one render so placedIn()'s identity cache still hits
+   * and the array is built once, not once per caller. */
+  function pool() {
+    return state.pool || (state.data ? state.data.people : []);
+  }
+
+  /* Who has gone quiet, and which of them have an active person in range.
+   *
+   * One computation behind one memo, because three separate places want this
+   * answer -- the headline, the queue's ranking, and the "reachable now"
+   * filter -- and three implementations of it is three chances for the tool to
+   * contradict itself on screen. reachIndex rather than a loop over
+   * nearestActive(): that is the difference between 52ms and 26 seconds.
+   *
+   * Keyed on the population's identity and the radius, which are the only two
+   * things the answer depends on. population() returns a fresh array per
+   * render, so this recomputes exactly once per render and never per caller. */
+  var _reach = { pool: null, radius: -1, quiet: [], keys: {} };
+
+  function reachCompute() {
+    var within = pool();
+    if (_reach.pool === within && _reach.radius === state.radiusMi) return;
+    var quiet = within.filter(isQuiet);
+    var idx = reachIndex(quiet, within);
+    var keys = {};
+    for (var i = 0; i < quiet.length; i++) {
+      var k = keyOf(quiet[i]);
+      if (idx[k]) keys[k] = true;
+    }
+    _reach = { pool: within, radius: state.radiusMi, quiet: quiet, keys: keys };
+  }
+  function quietIn()  { reachCompute(); return _reach.quiet; }
+  function reachKeys() { reachCompute(); return _reach.keys; }
+
+  function visible() {
+    // People off means people are not shown ANYWHERE -- map, list and table.
+    // Leaving the table populated while the map and the list were empty would
+    // make the toggle mean one thing in two views and another in the third.
+    // pool() is untouched, so a meetup's "who is nearby" still answers.
+    if (!overlayOn("people")) return [];
+    var rows = pool();
+    if (state.preset === "quiet") {
+      rows = rows.filter(isQuiet);
+    } else if (state.preset === "reachable") {
+      // This branch used to be missing entirely: clicking "reachable now"
+      // filtered nothing at all and the view sat there looking unchanged.
+      var keys = reachKeys();
+      rows = quietIn().filter(function (p) { return keys[keyOf(p)]; });
+    }
+    if (facetAny(state.statuses)) {
+      rows = rows.filter(function (p) { return !!state.statuses[p.status]; });
+    }
+    return rows;
   }
 
   /* Distances round to the kilometre, so 0 means "under 500m apart on record"
@@ -524,52 +704,56 @@
    * Both of these are live filters, so nothing that was clickable stopped
    * being clickable -- and every status is still reachable from the Status
    * control, which is where you would look for it. */
-  function renderCounters(list) {
-    var quiet = list.filter(function (p) {
-      return p.status === "dormant" || p.status === "inactive";
-    });
-    var reachable = 0;
-    quiet.forEach(function (p) {
-      if (nearestActive(p, list, 1).length) reachable++;
-    });
-    state.headline = { quiet: quiet.length, reachable: reachable, total: list.length };
+  function renderCounters() {
+    /* Measured against the population, never against the filtered list, so
+     * pressing either number does not change the number you pressed. */
+    var quiet = quietIn(), keys = reachKeys();
+    var reachable = quiet.filter(function (p) { return keys[keyOf(p)]; }).length;
+    var total = pool().length, rest = total - quiet.length;
+    state.headline = { quiet: quiet.length, reachable: reachable, total: total };
 
+    /* Both numbers carry their denominator, because without one they read as
+     * two slices of the whole that ought to sum to it -- and they never did.
+     * "Gone quiet" is a fraction of everyone in view; "reachable now" is a
+     * fraction OF THAT, which is what "of those" says. */
     $("counters").innerHTML =
-      headlineCell("gone quiet", quiet.length, "is-dormant", "quiet",
-        "People no source has seen in over 90 days. These are who the tool is for.") +
-      headlineCell("reachable now", reachable, "is-active", "reachable",
-        "Of those, the ones with an active person within " + state.radiusMi +
-        " miles. Someone can be asked to make contact today.");
+      headlineCell("gone quiet", quiet.length, "of " + total.toLocaleString(),
+        "is-dormant", "quiet",
+        quiet.length.toLocaleString() + " of the " + total.toLocaleString() +
+        " people in view have not been seen by any source in over 90 days: " +
+        "dormant plus inactive. The other " + rest.toLocaleString() + " are active, " +
+        "new, slowing, or have never been seen at all. Full breakdown above the list.") +
+      headlineCell("reachable now", reachable, "of those",
+        "is-active", "reachable",
+        reachable.toLocaleString() + " of those " + quiet.length.toLocaleString() +
+        " have an active person within " + state.radiusMi + " miles, so someone can be " +
+        "asked to make contact today. This is a slice of the number to its left, not a " +
+        "separate group \u2014 the two are not meant to add up to " + total.toLocaleString() + ".");
 
     Array.prototype.forEach.call($("counters").children, function (el) {
       if (!el.dataset.pick) return;
       el.onclick = function () {
-        var was = state.headlineFilter;
-        state.headlineFilter = was === el.dataset.pick ? "" : el.dataset.pick;
-        state.status = "";
-        if ($("f-status")) $("f-status").value = "";
+        // A preset REPLACES the status selection rather than intersecting
+        // with it: "gone quiet" and a Slowing chip are contradictory asks, and
+        // silently returning nothing is the worst way to say so.
+        var was = state.preset;
+        state.preset = was === el.dataset.pick ? "" : el.dataset.pick;
+        // A preset is a statement about people, so it switches People back on
+        // rather than filtering a layer nobody is looking at.
+        if (state.preset) { state.statuses = {}; state.overlays.people = true; }
         state.page = 0;
         render();
       };
     });
   }
 
-  function headlineCell(k, v, cls, pick, title) {
-    var on = state.headlineFilter === pick;
+  function headlineCell(k, v, of, cls, pick, title) {
+    var on = state.preset === pick;
     return '<button class="counter headline ' + cls + (on ? " is-on" : "") +
       '" data-pick="' + pick + '" aria-pressed="' + on + '" title="' + esc(title) + '">' +
-      '<span class="n tabular">' + v.toLocaleString() + '</span>' +
+      '<span class="n tabular">' + v.toLocaleString() +
+        '<span class="of"> ' + esc(of) + "</span></span>" +
       '<span class="k">' + k + "</span></button>";
-  }
-
-  function cell(k, v, cls, status, title) {
-    var on = status && state.status === status;
-    return '<' + (status ? "button" : "div") + ' class="counter ' + cls +
-      (status ? " is-clickable" : "") + (on ? " is-on" : "") + '"' +
-      (status ? ' data-status="' + status + '" aria-pressed="' + on + '"' : "") +
-      (title ? ' title="' + esc(title) + '"' : "") + ">" +
-      '<span class="n tabular">' + v.toLocaleString() + '</span><span class="k">' + k + "</span></" +
-      (status ? "button" : "div") + ">";
   }
 
   /* --- map --------------------------------------------------------------- */
@@ -838,6 +1022,17 @@
       // simply gets no filter chips, which is why Automatticians need no
       // special case anywhere.
       facet: function (m) { return m.status; },
+      /* Meetups carry a country, so Place applies to them: "the US, and active
+       * meetups" has to mean US meetups. The upstream file spells three of them
+       * differently from the people file, which would silently drop 147 US
+       * groups from a US view. */
+      place: function (m) { return matchPlaceCountry(MEETUP_COUNTRY[m.country] || m.country); },
+      listMeta: function (m) {
+        return [
+          esc(m.city || m.country || "") + " · " + m.members.toLocaleString() + " members",
+          m.lastEvent ? "last event " + esc(m.lastEvent) : "no events on record"
+        ];
+      },
       quiet: function (m) { return m.status === "Dormant"; },
       avatar: function () { return null; },
       select: function (m) { selectMeetup(m); },
@@ -878,6 +1073,12 @@
       name: function (a) { return a.name || "Name not listed"; },
       cls: function () { return "a11n"; },
       statusLabel: function () { return "a8c"; },
+      /* No place(). automattic.com/map publishes coordinates and no country, so
+       * this layer cannot be filtered by Place without inventing one -- and the
+       * rule this project runs on is never to infer. The section says so rather
+       * than quietly showing the wrong 1,346 people. */
+      place: null,
+      listMeta: function (a) { return [esc(a.role || "Automattician")]; },
       quiet: function () { return false; },
       avatar: function (a) { return a.avatar || null; },
       select: null,                       // no record panel of their own yet
@@ -911,11 +1112,9 @@
     if (live) { state.map.removeLayer(live); state.overlayLayers[def.id] = null; }
     if (!overlayOn(def.id)) return;
 
-    var want = state.overlayFilter[def.id];
-    var recs = (def.data() || []).filter(function (r) {
-      if (r.lat == null) return false;
-      return !want || !def.facet || def.facet(r) === want;
-    });
+    // Exactly the records the list is showing, from the same function, so the
+    // map and the rail cannot disagree about what is on.
+    var recs = layerRecords(def);
     if (!recs.length) return;
 
     var group = L.markerClusterGroup({
@@ -969,45 +1168,93 @@
     state.overlayLayers[def.id] = group;
   }
 
-  /* Chips for narrowing a layer, generated from the registry the same way the
-   * toggles are. A layer that declares no facet gets nothing, which is why
-   * Automatticians need no special case: they have one value and no question
-   * worth asking about it. Chips appear only while their layer is on, because
-   * a filter for something invisible is furniture. */
+  /* CHIPS ARE THE FILTER SURFACE.
+   *
+   * One renderer for every facet in the tool: the people statuses and each
+   * layer's own values go through this, so a status chip and a meetup chip
+   * cannot end up behaving differently. Multi-select, because "slowing and
+   * active" is a thing you can want to look at and a dropdown that allowed one
+   * made the tool unable to express it.
+   *
+   * Counts come from the population -- place, state and search -- and never
+   * from the current chip selection, so turning a chip on does not renumber the
+   * chip beside it. That is what makes them readable as "what is out there"
+   * rather than "what is left".
+   */
+  function chipRowHTML(id, label, values, counts, set, clsFor) {
+    var total = 0;
+    values.forEach(function (v) { total += counts[v] || 0; });
+    var any = facetAny(set);
+    return '<div class="chips" data-facet="' + esc(id) + '">' +
+      '<span class="label">' + esc(label) + "</span>" +
+      '<button class="chip' + (any ? "" : " on") + '" data-v="" aria-pressed="' + !any +
+        '">All ' + total.toLocaleString() + "</button>" +
+      values.map(function (v) {
+        var on = facetOn(set, v);
+        return '<button class="chip ' + esc(clsFor ? clsFor(v) : v) + (on ? " on" : "") +
+          '" data-v="' + esc(v) + '" aria-pressed="' + on + '">' +
+          esc(v) + " " + (counts[v] || 0).toLocaleString() + "</button>";
+      }).join("") + "</div>";
+  }
+
+  /* People statuses. Counts are of the population, so they answer "how many
+   * slowing people are there in the US" whatever else is switched on. */
+  function renderStatusFilters() {
+    var host = $("status-filters");
+    if (!host) return;
+    if (!overlayOn("people")) { host.innerHTML = ""; return; }
+    var counts = {};
+    pool().forEach(function (p) { counts[p.status] = (counts[p.status] || 0) + 1; });
+    var vals = STATUS.filter(function (s) { return counts[s]; });
+    host.innerHTML = chipRowHTML("people", "Status", vals, counts, state.statuses);
+    wireChips(host, function (v) {
+      // A status and a preset are contradictory asks -- the preset already
+      // fixes the statuses -- so picking a status clears the preset rather than
+      // intersecting with it and returning nothing.
+      state.preset = "";
+      if (v) facetToggle(state.statuses, v); else state.statuses = {};
+      state.page = 0;
+      render();
+    });
+  }
+
+  /* A layer's own values, from the registry the same way its toggle is. A layer
+   * that declares no facet gets no chips, which is why Automatticians need no
+   * special case: they have one value and no question worth asking about it.
+   * Chips appear only while their layer is on, because a filter for something
+   * invisible is furniture. */
   function renderLayerFilters() {
     var host = $("layer-filters");
     if (!host) return;
     var html = "";
     OVERLAYS.forEach(function (def) {
       if (!overlayOn(def.id) || !def.facet) return;
-      var counts = {}, total = 0;
+      var counts = {};
       (def.data() || []).forEach(function (r) {
         if (r.lat == null) return;
+        if (def.place && !def.place(r)) return;   // count what Place would give you
         var v = def.facet(r);
-        if (!v) return;
-        counts[v] = (counts[v] || 0) + 1; total++;
+        if (v) counts[v] = (counts[v] || 0) + 1;
       });
       var vals = Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
-      if (vals.length < 2) return;      // nothing to choose between
-      var cur = state.overlayFilter[def.id] || "";
-      html += '<div class="chips layer-chips" data-layer="' + esc(def.id) + '">' +
-        '<span class="label">' + esc(def.label) + "</span>" +
-        '<button class="chip' + (cur ? "" : " on") + '" data-v="">All ' + total + "</button>" +
-        vals.map(function (v) {
-          return '<button class="chip ' + esc(MEETUP_CLASS[v] || "") +
-            (cur === v ? " on" : "") + '" data-v="' + esc(v) + '">' +
-            esc(v) + " " + counts[v] + "</button>";
-        }).join("") + "</div>";
+      if (vals.length < 2) return;              // nothing to choose between
+      html += chipRowHTML(def.id, def.label, vals, counts,
+        state.overlayFilter[def.id] || (state.overlayFilter[def.id] = {}),
+        function (v) { return MEETUP_CLASS[v] || ""; });
     });
     host.innerHTML = html;
+    wireChips(host, function (v, id) {
+      var set = state.overlayFilter[id] || (state.overlayFilter[id] = {});
+      if (v) facetToggle(set, v); else state.overlayFilter[id] = {};
+      renderOverlay(overlayById(id));
+      renderLayerFilters();
+      renderSide(visible());
+    });
+  }
+
+  function wireChips(host, onPick) {
     Array.prototype.forEach.call(host.querySelectorAll(".chip"), function (el) {
-      el.onclick = function () {
-        var id = el.parentNode.dataset.layer, v = el.dataset.v;
-        state.overlayFilter[id] = state.overlayFilter[id] === v ? "" : v;
-        renderOverlay(overlayById(id));
-        renderLayerFilters();
-        renderSide(visible());
-      };
+      el.onclick = function () { onPick(el.dataset.v, el.parentNode.dataset.facet); };
     });
   }
 
@@ -1016,14 +1263,9 @@
   /* One proximity function for every overlay. Was two. */
   function nearbyIn(def, p) {
     if (p.lat == null) return [];
-    // Same filter the map uses. Without this the record panel lists dormant
-    // groups the map is not showing, and the two surfaces contradict.
-    var want = state.overlayFilter[def.id];
-    return (def.data() || [])
-      .filter(function (r) {
-        if (r.lat == null) return false;
-        return !want || !def.facet || def.facet(r) === want;
-      })
+    // Same filter the map and the list use. Without this the record panel lists
+    // dormant groups the map is not showing, and the surfaces contradict.
+    return layerRecords(def)
       .map(function (r) { return { p: r, d: distance(p, { lat: r.lat, lng: r.lng }) }; })
       .filter(function (h) { return !state.radiusMi || miles(h.d) <= state.radiusMi; })
       .sort(function (x, y) { return x.d - y.d; });
@@ -1254,15 +1496,20 @@
     if (!state.map) { initMap(); addExpandControl(); addResetControl(); addKeyControl(); }
     state.layer.clearLayers();
     state.markers = {};
-    var placed = list.filter(function (p) { return p.lat != null; });
+    // People is a layer now, and a layer that is off draws nothing. Without
+    // this, switching People off would leave the dots on the map while the list
+    // said they were gone.
+    var placed = overlayOn("people")
+      ? list.filter(function (p) { return p.lat != null; })
+      : [];
 
     var batch = [];
     placed.forEach(function (p) {
       // Hit targets, not decoration. A 10px dot is a hard click on a trackpad
       // and effectively unclickable for anyone whose eyes are not 25 -- the
       // whole map is unusable if you cannot reliably land on a person.
-      var size = p.tier === "roster" ? 20 : 16;
-      var cls = "circle " + p.status + (p.tier === "roster" ? " is-roster" : "") +
+      var size = hasRole(p) ? 20 : 16;
+      var cls = "circle " + p.status + (hasRole(p) ? " is-roster" : "") +
                 (p.a8c ? " is-a8c" : "") + (inSet("person", p) ? " in-set" : "");
       var html, box;
       if (p.avatar) {
@@ -1286,7 +1533,8 @@
       m.bindPopup(function () {
         return "<strong>" + esc(p.name) + "</strong>" +
           (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "<br>" +
-          esc(p.role) + (roleDef(p.role) ? '<br><span class="popup-def">' + esc(roleDef(p.role)) + "</span>" : "") +
+          (hasRole(p) ? "<strong>" + esc(p.role) + "</strong>" : esc(p.role)) +
+          (roleDef(p.role) ? '<br><span class="popup-def">' + esc(roleDef(p.role)) + "</span>" : "") +
           "<br>" + esc(p.city || p.country || "") +
           (p.precision === "country" ? " <em>(country only)</em>" : "") +
           '<br><span class="tag ' + p.status + '">' + p.status + "</span>";
@@ -1399,7 +1647,7 @@
     // WITHOUT going through render(). Without this, opening a person would not
     // change the URL, which is the single most important thing to link to.
     syncHash();
-    renderQueue(list);
+    renderList(list);
     renderRecord(list);
   }
 
@@ -1434,183 +1682,270 @@
     pane.innerHTML = "";
   }
 
-  function renderQueue(list) {
+  /* THE LIST IS A VIEW OF WHAT IS SELECTED.
+   *
+   * It used to be a queue: dormant and inactive people, always, and every other
+   * control could only narrow inside that. Turning on "slowing" therefore
+   * produced "No dormant people in this view" -- the list could not represent
+   * the selection, so it reported the selection as empty. That is the wrong
+   * shape for a tool whose whole premise is toggling things on and off.
+   *
+   * Now every facet is additive and the list shows what they select, in
+   * sections: people, then whichever layers are on. "Gone quiet, reachable
+   * first" survives as a PRESET rather than as a property of the list.
+   */
+  function renderList(list) {
     var side = $("queue");
     if (!side) return;
-
-    // The queue is only drawn in Triage. Building it is not free: it runs
-    // nearestActive() once per quiet person, which is the sweep the comment
-    // below says had to be hoisted out of the comparator. Do not pay for it in
-    // a mode where the column is not on screen.
     // Still built while the map is expanded: the rail is hidden, not gone, and
     // the arrow keys must have something to walk the moment it returns.
-    if (!side.offsetParent && state.queueKeys.length) return;
+    if (!side.offsetParent && state.listKeys.length) return;
 
-    // renderSide captured this before the swap could hide the column.
     var prevScroll = state.queueScroll;
-    /* Re-engagement ranking, not a dormancy leaderboard.
-     *
-     * A quiet person with an active person near them is something you can do
-     * today: ask the neighbour to make contact. A quiet person with nobody in
-     * range is a coverage gap -- still worth knowing, but it needs a different
-     * response and it should not sit at the top of a list you are working
-     * through. So reachability sorts first.
-     *
-     * Then: people holding a supporter role, then the MOST RECENTLY quiet,
-     * because recoverability falls off with time. Sorting by longest-gone put
-     * 2014 accounts at the top, which is the opposite of actionable.
-     *
-     * Reachability is computed once per render into a lookup rather than inside
-     * the comparator -- a comparator runs O(n log n) times and each call is a
-     * full sweep of the active set, which turns a 1,100-row list into millions
-     * of distance calculations. */
-    var quiet = list.filter(function (p) {
-      return p.status === "dormant" || p.status === "inactive";
-    });
-    var hasNeighbour = {};
-    quiet.forEach(function (p) {
-      hasNeighbour[keyOf(p)] = nearestActive(p, list, 1).length > 0;
-    });
-    quiet.sort(function (a, b) {
-      var an = hasNeighbour[keyOf(a)] ? 0 : 1, bn = hasNeighbour[keyOf(b)] ? 0 : 1;
-      if (an !== bn) return an - bn;
-      var ar = a.tier === "community" ? 1 : 0, br = b.tier === "community" ? 1 : 0;
-      if (ar !== br) return ar - br;
-      var ad = a.status === "inactive" ? 1 : 0, bd = b.status === "inactive" ? 1 : 0;
-      if (ad !== bd) return ad - bd;
-      return (a.days || 0) - (b.days || 0);
-    });
+    var html = pendingHTML() + selectionHTML(list);
 
-    if (!list.length) {
-      side.innerHTML = '<div class="state"><strong>Nothing matches</strong>' +
-        "No one fits these filters. Widen the place, switch to Everyone, or clear the search.</div>";
-      return;
+    var walk = [];                    // what the arrow keys move through
+    if (overlayOn("people")) html += peopleSectionHTML(list, walk);
+    OVERLAYS.forEach(function (def) {
+      if (def.id === "people" || !overlayOn(def.id)) return;
+      html += layerSectionHTML(def);
+    });
+    if (!walk.length) html += emptyHTML();
+
+    state.listKeys = walk;
+    side.innerHTML = html;
+    if (side.offsetParent !== null) side.scrollTop = prevScroll;
+
+    wirePending();
+    wireListRows(side, list);
+    wireShowMore(side, list);
+    scrollLastViewedIntoView(side);
+  }
+
+  /* What the current selection is, said in one line above the list, because a
+   * list of 3,196 rows does not tell you which of six statuses produced it. */
+  function selectionHTML(list) {
+    var bits = [];
+    if (state.preset === "quiet") bits.push("gone quiet");
+    else if (state.preset === "reachable") bits.push("gone quiet, with someone active in range");
+    var st = Object.keys(state.statuses).filter(function (k) { return state.statuses[k]; });
+    if (st.length) bits.push(st.join(", "));
+    if (state.place) bits.push(state.usState ? state.usState : state.place);
+    if (state.q) bits.push('"' + esc(state.q) + '"');
+
+    var sub = bits.length
+      ? '<p class="hint">Showing ' + bits.join(" · ") + ".</p>"
+      : '<p class="hint">Everyone in the two Slack channels, everywhere. Turn on a ' +
+        "status, a place or a headline to narrow it.</p>";
+
+    // Ranking only means something when the preset is on, so it is only claimed
+    // then. Saying "ranked by reachability" over an alphabetical list would be
+    // the tool describing work it did not do.
+    if (state.preset) {
+      sub += '<p class="hint">Reachable first — those are the ones you can act on ' +
+        "today. Anyone with nobody in range sits at the bottom: that is a coverage gap, " +
+        'not a lead. <span class="subtle">↑ ↓ to move through them, Esc to come ' +
+        "back.</span></p>";
     }
 
-    // The status breakdown and the coverage numbers, next to the list they are
-    // about. They were headline figures in the masthead, which gave a dataset
-    // fact the same weight as the question the tool exists to answer.
-    var n = { active: 0, new: 0, slowing: 0, dormant: 0, inactive: 0, unknown: 0 };
-    list.forEach(function (p) { n[p.status] = (n[p.status] || 0) + 1; });
     var mapped = list.filter(function (p) { return p.lat != null; }).length;
-
-    var recent = quiet.filter(function (p) { return p.status === "dormant"; }).length;
-    var withLead = quiet.filter(function (p) { return hasNeighbour[keyOf(p)]; }).length;
-    var html = pendingHTML() +
-      '<p class="label">Gone quiet — ' + quiet.length + "</p>" +
-      '<p class="hint">' + withLead + " of these have an active person within " +
-      state.radiusMi + " miles, and are listed first — those are the ones you can act on " +
-      "today. " + recent + " went quiet within the last year. Anyone with nobody in range " +
-      "sits at the bottom: that is a coverage gap, not a lead." +
-      ' <span class="subtle">&uarr; &darr; to move through them, Esc to come back.</span></p>' +
-      // What the masthead used to shout. Same numbers, next to the list they
-      // describe, at the size a supporting fact deserves.
-      '<div class="breakdown">' +
-        ["active", "new", "slowing", "dormant", "inactive", "unknown"]
-          .filter(function (k) { return n[k]; })
-          .map(function (k) {
-            return '<button class="chip ' + k + (state.status === k ? " on" : "") +
-                   '" data-bstatus="' + k + '">' + k + " " + n[k].toLocaleString() + "</button>";
-          }).join("") +
-      "</div>" +
-      '<p class="hint coverage">' + mapped.toLocaleString() + " of " +
+    if (overlayOn("people") && mapped < list.length) {
+      sub += '<p class="hint coverage">' + mapped.toLocaleString() + " of " +
         list.length.toLocaleString() + " are on the map. The rest never filled in a " +
         "location, so they are counted here but cannot be placed.</p>";
+    }
+    return sub;
+  }
 
-    // The arrow keys walk exactly what is drawn, so the order is recorded here
-    // rather than recomputed in the handler, where it could drift out of sync.
-    var shown = quiet.slice(0, state.queueLimit);
-    state.queueKeys = shown.map(keyOf);
+  function emptyHTML() {
+    return '<div class="state"><strong>Nothing selected</strong>' +
+      "Nothing matches, or every layer is switched off. Widen the place, clear a status, " +
+      "or turn People back on.</div>";
+  }
 
-    if (!quiet.length) {
-      html += '<div class="state">No dormant people in this view.</div>';
+  /* The people section.
+   *
+   * Two orders, and which one is in force is stated above the list rather than
+   * left to be inferred:
+   *
+   *  - PRESET ON: reachability first, then role-holders, then most recently
+   *    quiet. Recoverability falls off with time, so sorting by longest-gone
+   *    put 2014 accounts at the top, which is the opposite of actionable.
+   *  - PRESET OFF: most recently seen first, which is the only order that means
+   *    anything across a mixed selection of statuses.
+   *
+   * Reachability is read from the per-render memo, never computed inside the
+   * comparator: a comparator runs O(n log n) times and each call would be a
+   * full sweep of the active set. */
+  function peopleSectionHTML(list, walk) {
+    var rows = list.slice();
+    if (state.preset) {
+      var reach = reachKeys();
+      rows.sort(function (a, b) {
+        var an = reach[keyOf(a)] ? 0 : 1, bn = reach[keyOf(b)] ? 0 : 1;
+        if (an !== bn) return an - bn;
+        var ar = hasRole(a) ? 0 : 1, br = hasRole(b) ? 0 : 1;
+        if (ar !== br) return ar - br;
+        var ad = a.status === "inactive" ? 1 : 0, bd = b.status === "inactive" ? 1 : 0;
+        if (ad !== bd) return ad - bd;
+        return (a.days || 0) - (b.days || 0);
+      });
     } else {
-      html += shown.map(function (p) {
-        var near = nearestActive(p, list, 1)[0] || null;
-        var reach;
-        if (near) {
-          reach = '<div class="meta">Nearest active: <strong>' + esc(near.p.name) +
-                  "</strong> · " + km(near.d) + "</div>";
-        } else if (p.lat == null) {
-          reach = '<div class="meta subtle">No location on record</div>';
-        } else {
-          // Say how far the nearest one actually is, so the radius can be
-          // widened deliberately rather than guessed at.
-          var far = nearestAnywhere(p, list);
-          reach = '<div class="meta subtle">Nobody active within ' + state.radiusMi + " mi" +
-                  (far ? " · closest is " + esc(far.p.name) + " at " + km(far.d) : "") + "</div>";
-        }
-        return '<div class="row' + (keyOf(p) === state.lastViewed ? " is-viewed" : "") +
-          '" data-name="' + esc(p.name) + '" data-key="' + esc(keyOf(p)) + '">' +
-          '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span>" +
-            (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</div>" +
-          '<div class="meta">' + roleHTML(p.role) +
-            // the freshest signal from any source, not just Slack's, or the row
-            // contradicts the record it opens
-            (p.last_signal || p.last_seen
-              ? " · last seen " + esc(p.last_signal || p.last_seen)
-              : " · no signal on record") +
-          "</div>" + reach +
-          "</div>";
-      }).join("");
-      if (quiet.length > shown.length) {
-        html += '<div class="state">' + shown.length + " of " + quiet.length +
-          ", most recoverable first. " +
-          '<button class="btn" id="queue-more">Show ' +
-          Math.min(60, quiet.length - shown.length) + " more</button></div>";
-      }
+      rows.sort(function (a, b) {
+        var ax = a.last_signal || a.last_seen || "", bx = b.last_signal || b.last_seen || "";
+        if (ax === bx) return String(a.name).localeCompare(String(b.name));
+        if (!ax) return 1;
+        if (!bx) return -1;
+        return ax < bx ? 1 : -1;
+      });
     }
 
-    // The legend explains what the map's shapes and colours mean, so it lives
-    // on the map now, behind a control. Parked at the bottom of a 1,101-row
-    // scroller it was both unfindable and in the way.
-    side.innerHTML = html;
-    // Put the queue back exactly where it was. Without this, every look at a
-    // record dumped you at the top of a 1,101-row list you were part-way through.
-    // Assigning scrollTop to a hidden element does not stick, so this runs
-    // again on the way back when the queue is visible.
-    if (side.offsetParent !== null) side.scrollTop = prevScroll;
-    Array.prototype.forEach.call(side.querySelectorAll("[data-bstatus]"), function (el) {
-      el.onclick = function () {
-        var k = el.dataset.bstatus;
-        state.status = state.status === k ? "" : k;
-        state.headlineFilter = "";
-        if ($("f-status")) $("f-status").value = state.status;
-        state.page = 0;
-        render();
-      };
+    var limit = state.limits.people || 60;
+    var shown = rows.slice(0, limit);
+    shown.forEach(function (p) { walk.push(keyOf(p)); });
+
+    var html = sectionHead("People", rows.length,
+      state.preset ? "reachable first" : "most recently seen first");
+    html += shown.map(personRowHTML).join("");
+    html += moreHTML("people", shown.length, rows.length);
+    return html;
+  }
+
+  function personRowHTML(p) {
+    var reach;
+    var near = nearestActive(p, pool(), 1)[0] || null;
+    if (near) {
+      reach = '<div class="meta">Nearest active: <strong>' + esc(near.p.name) +
+              "</strong> · " + km(near.d) + "</div>";
+    } else if (p.lat == null) {
+      reach = '<div class="meta subtle">No location on record</div>';
+    } else {
+      // Say how far the nearest one actually is, so the radius can be widened
+      // deliberately rather than guessed at.
+      var far = nearestAnywhere(p, pool());
+      reach = '<div class="meta subtle">Nobody active within ' + state.radiusMi + " mi" +
+              (far ? " · closest is " + esc(far.p.name) + " at " + km(far.d) : "") + "</div>";
+    }
+    return '<div class="row' + (keyOf(p) === state.lastViewed ? " is-viewed" : "") +
+      '" data-name="' + esc(p.name) + '" data-key="' + esc(keyOf(p)) + '">' +
+      '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span>" +
+        roleTag(p) +
+        (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</div>" +
+      '<div class="meta">' + (hasRole(p) ? "" : roleHTML(p.role)) +
+        (hasRole(p) ? "" : " · ") +
+        // the freshest signal from any source, not just Slack's, or the row
+        // contradicts the record it opens
+        (p.last_signal || p.last_seen
+          ? "last seen " + esc(p.last_signal || p.last_seen)
+          : "no signal on record") +
+      "</div>" + reach +
+      "</div>";
+  }
+
+  /* One section builder for every layer, driven by the same registry that draws
+   * the markers and the chips. A new layer is a descriptor, not a fourth copy
+   * of this. Ordered the way the map orders it: whatever the layer calls worth
+   * acting on comes first. */
+  function layerSectionHTML(def) {
+    var recs = layerRecords(def);
+    recs.sort(function (a, b) {
+      var aq = def.quiet(a) ? 0 : 1, bq = def.quiet(b) ? 0 : 1;
+      if (aq !== bq) return aq - bq;
+      return String(def.name(a)).localeCompare(String(def.name(b)));
     });
 
-    var more = $("queue-more");
-    if (more) more.onclick = function () {
-      // Keep the scroll where it is: the point of showing more is to carry on
-      // from where you had read to, not to be thrown back to the top.
-      state.queueScroll = side.scrollTop;
-      state.queueLimit += 60;
-      renderQueue(visible());
-    };
-    // Centre it if any part of it is clipped, not only when it is fully off
-    // screen: a row half-cut by the top edge is exactly as hard to find.
-    var seen = side.querySelector(".row.is-viewed");
-    if (seen) {
-      var top = seen.offsetTop, bottom = top + seen.offsetHeight;
-      if (top < side.scrollTop + 8 ||
-          bottom > side.scrollTop + side.clientHeight - 8) {
-        seen.scrollIntoView({ block: "center" });
-      }
+    var limit = state.limits[def.id] || 40;
+    var shown = recs.slice(0, limit);
+
+    var html = sectionHead(def.label, recs.length,
+      def.place ? "" : "not filtered by Place — no country on record");
+    if (!recs.length) {
+      html += '<div class="state">None match this selection.</div>';
+      return html;
     }
-    wirePending();
+    html += shown.map(function (r) {
+      var meta = def.listMeta ? def.listMeta(r) : [];
+      return '<div class="row" data-key="' + esc(def.key(r)) + '" data-layer="' +
+        esc(def.id) + '">' +
+        '<div class="nm">' + esc(def.name(r)) +
+          ' <span class="tag ' + esc(def.cls(r)) + '">' + esc(def.statusLabel(r)) + "</span></div>" +
+        meta.map(function (m) { return '<div class="meta">' + m + "</div>"; }).join("") +
+        "</div>";
+    }).join("");
+    html += moreHTML(def.id, shown.length, recs.length);
+    return html;
+  }
+
+  /* The records a layer contributes to the CURRENT selection: its own facet
+   * chips, plus Place where the layer carries a country. The map filters by
+   * exactly this, so the two surfaces cannot disagree about what is on. */
+  function layerRecords(def) {
+    return (def.data() || []).filter(function (r) {
+      if (r.lat == null) return false;
+      if (def.facet && !facetMatch(state.overlayFilter[def.id], def.facet(r))) return false;
+      if (def.place && !def.place(r)) return false;
+      return true;
+    });
+  }
+
+  function sectionHead(label, n, note) {
+    return '<div class="section-head"><p class="label">' + esc(label) + " " +
+      n.toLocaleString() + "</p>" +
+      (note ? '<p class="hint">' + esc(note) + "</p>" : "") + "</div>";
+  }
+
+  function moreHTML(id, shown, total) {
+    if (total <= shown) return "";
+    return '<div class="state">' + shown.toLocaleString() + " of " + total.toLocaleString() +
+      ". " + '<button class="btn" data-more="' + esc(id) + '">Show ' +
+      Math.min(60, total - shown) + " more</button></div>";
+  }
+
+  function wireShowMore(side, list) {
+    Array.prototype.forEach.call(side.querySelectorAll("[data-more]"), function (el) {
+      el.onclick = function () {
+        // Keep the scroll where it is: the point of showing more is to carry on
+        // from where you had read to, not to be thrown back to the top.
+        state.queueScroll = side.scrollTop;
+        var id = el.dataset.more;
+        state.limits[id] = (state.limits[id] || (id === "people" ? 60 : 40)) + 60;
+        renderList(list);
+      };
+    });
+  }
+
+  function wireListRows(side, list) {
     Array.prototype.forEach.call(side.querySelectorAll(".row"), function (el) {
-      var key = el.dataset.key;
+      var key = el.dataset.key, layer = el.dataset.layer;
+      el.onmouseenter = function () { markMarker(key, "is-hot", true); };
+      el.onmouseleave = function () { markMarker(key, "is-hot", false); };
+      if (layer) {
+        var def = overlayById(layer);
+        if (!def || !def.select) return;
+        var rec = null;
+        layerRecords(def).forEach(function (r) { if (def.key(r) === key) rec = r; });
+        el.onclick = function () { if (rec) def.select(rec); };
+        return;
+      }
       // Match on the .org key, not the name: 78 names in this dataset are shared
       // by more than one person, so name matching selects the wrong one.
       var hit = null;
       list.forEach(function (x) { if (keyOf(x) === key) hit = x; });
-      el.onmouseenter = function () { markMarker(key, "is-hot", true); };
-      el.onmouseleave = function () { markMarker(key, "is-hot", false); };
       el.onclick = function () { if (hit) select(hit, list); };
     });
   }
+
+  function scrollLastViewedIntoView(side) {
+    // Centre it if any part of it is clipped, not only when it is fully off
+    // screen: a row half-cut by the top edge is exactly as hard to find.
+    var seen = side.querySelector(".row.is-viewed");
+    if (!seen) return;
+    var top = seen.offsetTop, bottom = top + seen.offsetHeight;
+    if (top < side.scrollTop + 8 || bottom > side.scrollTop + side.clientHeight - 8) {
+      seen.scrollIntoView({ block: "center" });
+    }
+  }
+
 
   function pendingHTML() {
     var n = Object.keys(loadEdits()).length;
@@ -1643,12 +1978,22 @@
              esc(m.buckets[s]) + "</dd>";
     }).join("");
 
+    var withRole = state.data.people.filter(hasRole).length;
+
     return '<div class="legend">' +
       '<p class="label">Shape is the layer</p><dl>' +
         "<dt><span class='dot pin circle active'></span>People</dt><dd>always shown</dd>" +
         shapes +
       "</dl>" +
       '<p class="label" style="margin-top:var(--s-4)">Colour is the status</p><dl>' + colours + "</dl>" +
+      // The ring carries the whole "has a role" distinction now that it is not
+      // a filter, so it earns its own line rather than a footnote.
+      '<p class="label" style="margin-top:var(--s-4)">A ring is a role</p><dl>' +
+        "<dt><span class='dot pin circle active is-roster'></span>Team role</dt><dd>" +
+          withRole.toLocaleString() + " on the roster or found doing the work</dd>" +
+        "<dt><span class='dot pin circle active'></span>No role</dt><dd>" +
+          (state.data.people.length - withRole).toLocaleString() + " in the channels</dd>" +
+      "</dl>" +
       '<p class="meta" style="font-size:var(--t-small);color:var(--faint);margin-top:var(--s-3)">' +
       esc(m.caveats[1]) + "</p></div>";
   }
@@ -1732,9 +2077,24 @@
     var start = state.page * per;
     var rows = all.slice(start, start + per);
     // Only the page on screen, so paging stays instant on 7,032 rows.
-    var reach = reachIndex(rows, list);
+    var reach = reachIndex(rows, pool());
 
     $("do-csv").textContent = "Export " + all.length.toLocaleString() + " rows";
+    if (!all.length) {
+      // An empty grid with live headers reads as a loading failure. Say which
+      // switch produced it, since with People off no filter change will refill
+      // this table.
+      $("tbody").innerHTML = '<tr><td colspan="' + (COLS.length + 1) + '">' +
+        (overlayOn("people")
+          ? "No one matches this selection. Clear a status, widen the place, or clear the search."
+          : "People are switched off. Turn them back on in Show.") +
+        "</td></tr>";
+      $("tcount").textContent = "0 contributors";
+      $("pg-label").textContent = "1 / 1";
+      $("do-csv").textContent = "Export 0 rows";
+      return;
+    }
+
     $("tcount").textContent = all.length.toLocaleString() + " contributors" +
       (all.length > per ? " · showing " + (start + 1) + "–" + Math.min(start + per, all.length) : "");
     $("pg-label").textContent = (state.page + 1) + " / " + pages;
@@ -1796,8 +2156,9 @@
         // Both things at once, said plainly. Someone can hold a Community Team
         // role and work here, and the map used to show them twice rather than
         // saying so.
+        roleTag(p) +
         (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</h2>" +
-      '<p class="meta">' + roleHTML(p.role) +
+      '<p class="meta">' + (hasRole(p) ? "" : roleHTML(p.role)) +
         (p.a8c && p.a8c_title ? " · " + esc(p.a8c_title) + " at Automattic"
                               : (p.employer ? " · " + esc(p.employer) : "")) + "</p>" +
       '<p style="margin-top:var(--s-2)"><span class="tag ' + p.status + '">' + p.status + "</span>" +
@@ -1876,14 +2237,14 @@
       state.map.flyTo([mt.lat, mt.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM), { duration: 0.6 });
     }
     markMarker(overlayById("meetups").key(mt), "is-picked", true);
-    nearbyPeople({ lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "" }, visible())
+    nearbyPeople({ lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "" }, pool())
       .forEach(function (h) { markMarker(keyOf(h.p), "is-near", true); });
   }
 
   function meetupDetailHTML(mt, list) {
     var here = { lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "\u0000" };
-    var near = nearbyPeople(here, list, state.nearStatus);
-    var tally = nearbyTally(here, list);
+    var near = nearbyPeople(here, pool(), state.nearStatus);
+    var tally = nearbyTally(here, pool());
     var cls = MEETUP_CLASS[mt.status] || "m-never";
 
     var head = '<div class="detail">' +
@@ -1938,12 +2299,12 @@
         '<div class="state">This person has no location on record, so proximity ' +
         "cannot be worked out. Correcting their location puts them on the map.</div>";
     }
-    var tally = nearbyTally(p, list);
-    var rows = nearbyPeople(p, list, state.nearStatus).slice(0, 12);
+    var tally = nearbyTally(p, pool());
+    var rows = nearbyPeople(p, pool(), state.nearStatus).slice(0, 12);
     var head = '<p class="label">Who is nearby</p>' + radiusSliderHTML() + nearFilterHTML(tally);
 
     if (!Object.keys(tally).length) {
-      var far = nearestAnywhere(p, list);
+      var far = nearestAnywhere(p, pool());
       // Layer blocks still render: "no community members nearby, but three
       // dormant meetups and an Automattician are" is a complete answer, and the
       // old early return threw it away.
@@ -2119,8 +2480,8 @@
   function select(p, list) {
     // Picking someone on the Explore map means you want to work on them, so it
     // hands you to Triage on that person rather than making you flip modes.
-    // Must happen before renderSide(), or the queue does not exist yet and
-    // queueKeys stays empty, which breaks the arrow keys on arrival.
+    // Must happen before renderSide(), or the list does not exist yet and
+    // listKeys stays empty, which breaks the arrow keys on arrival.
     // Deliberately does NOT collapse the map. Clicking someone used to switch
     // mode and re-frame the map at once, so a single click moved two things
     // nobody asked it to move.
@@ -2248,7 +2609,7 @@
    * position per person. Deliberately does not wrap: running off the end of a
    * work list should stop, not silently restart it. */
   function stepQueue(delta) {
-    var keys = state.queueKeys;
+    var keys = state.listKeys;
     if (!keys.length) return;
     var cur = state.lastViewed ? keys.indexOf(state.lastViewed) : -1;
     // Someone picked off the map may be active, so they are not in the queue at
@@ -2310,7 +2671,7 @@
 
   function exportCSV() {
     var list = visible();
-    var reach = reachIndex(list, list);
+    var reach = reachIndex(list, pool());
     var cols = ["#"].concat(COLS.map(function (c) { return c[1]; }));
     var lines = [cols.map(q).join(",")];
     list.forEach(function (p, i) {
@@ -2347,8 +2708,13 @@
     // One call on the single render path, rather than one bolted onto each of
     // the eleven handlers that mutate state.
     syncHash();
+    // Built once per render and held on state: every proximity question on
+    // screen is asked against this, and placedIn() caches on its identity.
+    state.pool = population();
     var list = visible();
-    renderCounters(list);
+    renderCounters();
+    renderStatusFilters();
+    renderLayerFilters();
     // The mode is stamped on the stage, and the CSS does the layout. Written
     // before renderMap() runs, because fitBounds measures the pane and would
     // otherwise measure the track width the previous mode had.
@@ -2412,10 +2778,7 @@
     var isUS = state.place === "United States";
     group.hidden = !isUS;
     if (!isUS) return;
-    var pool = (state.data ? state.data.people : []).filter(function (p) {
-      if (state.pop === "roster" && p.tier === "community") return false;
-      return inUS(p);
-    });
+    var pool = (state.data ? state.data.people : []).filter(inUS);
     var counts = {}, unknown = 0;
     pool.forEach(function (p) {
       if (p.usState) counts[p.usState] = (counts[p.usState] || 0) + 1;
@@ -2445,12 +2808,7 @@
     var fromLink = applyStateFromHash();
     document.title = "Community Map — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
-    toggle("p-roster", "p-all", "pop", "roster", "all");
-
     syncExpandButton();
-    // Reflect the landing population on the buttons toggle() did not set.
-    $("p-roster").setAttribute("aria-pressed", String(state.pop === "roster"));
-    $("p-all").setAttribute("aria-pressed", String(state.pop === "all"));
 
     // Place list, most-populated first, so the useful ones are at the top.
     // Each count is produced by the same predicate that filters on it, so the
@@ -2466,8 +2824,7 @@
                esc(c) + " (" + counts[c] + ")</option>";
       }).join("");
     buildStateOptions();
-    $("f-status").innerHTML = '<option value="">All statuses</option>' +
-      STATUS.map(function (x) { return '<option value="' + x + '">' + x + "</option>"; }).join("");
+
 
     // Changing place clears any selection, so the map is free to re-fit to the
     // new place instead of being held in position by the old pin.
@@ -2483,7 +2840,6 @@
       render();
     };
     $("f-state").onchange   = function (e) { state.usState = e.target.value; state.page = 0; render(); };
-    $("f-status").onchange  = function (e) { state.status  = e.target.value; state.page = 0; render(); };
     $("f-rows").onchange    = function (e) { state.rows = parseInt(e.target.value, 10); state.page = 0; render(); };
 
     $("set-btn").onclick = function () {
@@ -2500,24 +2856,36 @@
     // and not another hand-wired pair of button and handler.
     var seg = $("layer-toggles");
     if (seg) {
-      seg.innerHTML = OVERLAYS.map(function (def) {
-        return '<button id="l-' + def.id + '" aria-pressed="false" title="' +
+      /* People sits in the same strip as the other layers rather than being an
+       * implicit always-on background, because "toggle everything on and off"
+       * is not true if one of the three cannot be toggled. It is not in
+       * OVERLAYS: those descriptors draw clustered marker groups from their own
+       * data, and people are drawn by renderMap with avatars, ranking and a
+       * record panel. Same switch, different renderer. */
+      var LAYERS = [{
+        id: "people", label: "People",
+        title: "Everyone in #community-events or #community-team on Make WordPress Slack."
+      }].concat(OVERLAYS);
+
+      seg.innerHTML = LAYERS.map(function (def) {
+        return '<button id="l-' + def.id + '" aria-pressed="' +
+               (overlayOn(def.id) ? "true" : "false") + '" title="' +
                esc(def.title) + '">' + esc(def.label) + "</button>";
       }).join("");
-      OVERLAYS.forEach(function (def) {
+      LAYERS.forEach(function (def) {
         var btn = $("l-" + def.id);
         btn.onclick = function () {
           state.overlays[def.id] = !state.overlays[def.id];
           btn.setAttribute("aria-pressed", state.overlays[def.id] ? "true" : "false");
           // Turning a layer off drops its narrowing too, so it does not come
           // back later silently filtered by something you set ages ago.
-          if (!state.overlays[def.id]) state.overlayFilter[def.id] = "";
-          renderOverlay(def);
-          renderLayerFilters();
-          renderSide(visible());
+          if (!state.overlays[def.id]) {
+            if (def.id === "people") { state.statuses = {}; state.preset = ""; }
+            else state.overlayFilter[def.id] = {};
+          }
+          render();
         };
       });
-      renderLayerFilters();
     }
 
     $("pg-prev").onclick    = function () { state.page--; renderTable(visible()); };

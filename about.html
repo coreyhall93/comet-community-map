@@ -134,6 +134,7 @@
       <a href="#what" data-sec="what">What this is</a>
       <a href="#using" data-sec="using">Using it</a>
       <p class="nav-group">Reading it</p>
+      <a href="#numbers" data-sec="numbers">The two numbers</a>
       <a href="#read" data-sec="read">How to read it</a>
       <a href="#roles" data-sec="roles">Roles</a>
       <p class="nav-group">The data</p>
@@ -172,27 +173,57 @@
     <tr><td>Community</td><td>Everyone else in <code>#community-events</code> or
       <code>#community-team</code></td><td>6,936</td></tr>
   </table>
+  <p>All three are always shown together. The first two — 96 people — carry a role
+  badge and a ringed dot; the third does not. Nothing is hidden to make a group findable.</p>
 <h2 id="using">Using it</h2>
 
   <h3>The layout</h3>
-  <p>A ranked list of people who have gone quiet on the left, the map on the right.
-  Picking someone opens their record where the list was, and the map moves to them.
-  Nothing else changes and nothing switches mode on you.</p>
+  <p>The list on the left, the map on the right, and both show the same thing: whatever
+  you have switched on. Picking someone opens their record where the list was, and the map
+  moves to them. Nothing else changes and nothing switches mode on you.</p>
+  <div class="note">
+    <strong>Every filter is additive, and nothing is hidden by default.</strong> Statuses
+    are chips you turn on in any combination — slowing <em>and</em> active is a view you
+    can ask for. Turning them all off means all of them, not none. People, Meetups and
+    Automatticians are three switches in <strong>Show</strong>, and each one that is on
+    contributes a section to the list and its own markers to the map. The chips under
+    Show belong to whichever layers are on.
+  </div>
   <p>The expand control on the map — the corner arrows, under the zoom buttons —
   hides the list and gives the map the whole width. It is a view, not a mode:
   only that control turns it on or off, and selecting someone leaves it alone.</p>
 
-  <h3>Working the queue</h3>
-  <p>The queue is ranked, not sorted by how long someone has been quiet. People with an
-  active person within reach come first, because those are the ones you can act on today.
-  Anyone with nobody in range sits at the bottom: that is a coverage gap, not a lead.</p>
+  <h3>The preset, and how the list is ordered</h3>
+  <p><strong>Gone quiet</strong> and <strong>Reachable now</strong> in the masthead are not
+  only counters. Clicking either switches on a preset — a saved selection you can turn off
+  like anything else. The tool opens with <em>Gone quiet</em> on, so it lands on the job it
+  exists for rather than on several thousand undifferentiated rows.</p>
+  <p>While a preset is on, the list is <strong>ranked</strong>, not sorted by how long
+  someone has been quiet. People with an active person within reach come first, because
+  those are the ones you can act on today. Anyone with nobody in range sits at the bottom:
+  that is a coverage gap, not a lead. With the preset off, the list is in last-seen order,
+  most recent first — the only order that means anything across a mixed selection of
+  statuses. Whichever is in force is printed above the list.</p>
+  <p>Picking a status chip clears the preset, and switching a preset on clears the status
+  chips. They are two ways of asking the same question, and combining them would mostly
+  return nothing while looking as though it should not.</p>
   <ul>
-    <li><strong>&uarr; and &darr;</strong> move through the queue without going back to it.</li>
-    <li><strong>Esc</strong> closes a record. The queue returns exactly where you left it.</li>
-    <li><strong>Show more</strong> extends the queue sixty at a time.</li>
+    <li><strong>&uarr; and &darr;</strong> move through the people without going back to
+      the list. They walk people only, never meetups.</li>
+    <li><strong>Esc</strong> closes a record. The list returns exactly where you left it.</li>
+    <li><strong>Show more</strong> extends a section sixty at a time. Each section has
+      its own.</li>
   </ul>
 
-  <h3>Narrowing</h3>
+  <h3>The controls</h3>
+  <div class="note">
+    <strong>There is no population switch.</strong> Everyone in the two Slack channels is
+    always shown. People holding a Community Team role are <em>labelled</em> rather than
+    filtered to: a badge beside their name in the list and their record, a larger ringed
+    dot on the map, the Role column in the table, and their role is searchable. A control
+    that swapped the whole population meant the same link could show 96 people or 7,032
+    depending on a button two clicks away, and it sometimes opened on the wrong one.
+  </div>
   <table>
     <tr><th>Control</th><th>What it does</th></tr>
     <tr><td>Place</td><td>Global, or one country. The number in each option is the number of
@@ -200,21 +231,33 @@
     <tr><td>State</td><td>Appears only for the United States. Derived from what people typed
       on their .org profile, so it is not complete: the list says how many have no state on
       record rather than hiding them.</td></tr>
-    <tr><td>Who</td><td>Role-holders, or everyone in the two Slack channels.</td></tr>
-    <tr><td>Status</td><td>One status at a time. The headline numbers are also buttons.</td></tr>
-    <tr><td>Search</td><td>Name, place or handle.</td></tr>
+    <tr><td>Show</td><td>People, Meetups, Automatticians. Each is a switch; each one on
+      adds a section to the list and its markers to the map. With People off, they leave
+      the table too — a switch that meant one thing in two views and another in the
+      third would not be a switch.</td></tr>
+    <tr><td>Status</td><td>Chips, any combination. The count on each is of the
+      <em>population</em> — place, state and search — so turning one on never
+      renumbers the one beside it.</td></tr>
+    <tr><td>Meetups</td><td>Active, Dormant, Not started, same chips, same rules. Place
+      applies to meetups as well, so a United States view gives United States groups.</td></tr>
+    <tr><td>Search</td><td>Name, place, handle or <strong>role</strong> — typing
+      “Program Supporter” gives you exactly that group.</td></tr>
   </table>
 
   <h3>Layers</h3>
-  <p>Meetups and Automatticians draw on top of the people. <strong>Shape is the layer,
-  colour is the status</strong>, so the two can be read independently and neither depends on
-  telling colours apart. Turning a layer on gives it its own filter chips; meetups can be
-  narrowed to Active, Dormant or Not started.</p>
+  <p><strong>Shape is the layer, colour is the status</strong>, so the two can be read
+  independently and neither depends on telling colours apart. Turning a layer on gives it
+  its own chips and its own section in the list.</p>
+  <p>Automatticians are the one exception to Place: automattic.com/map publishes
+  coordinates and no country, so they cannot be filtered by it without inventing one. The
+  section says so rather than quietly showing the wrong 1,346 people.</p>
   <p>The key is on the map itself, behind the button under the zoom controls.</p>
 
   <h3>Sending someone a view</h3>
-  <p>The address bar tracks what you are looking at, so copy it and paste it. Mode, place,
-  state, who, status, search and the person you have open all travel. Whoever opens it enters
+  <p>The address bar tracks what you are looking at, so copy it and paste it. View, place,
+  state, every status chip, every layer and its chips, the preset, the search and the person
+  you have open all travel — “the US, slowing and active people, active meetups”
+  is a link. Whoever opens it enters
   the passphrase and lands exactly where you were.</p>
   <div class="note">
     <strong>A link carries a name, never a judgement.</strong> The only thing about a person
@@ -230,6 +273,44 @@
   <p>Reset view, the circular arrow under the zoom controls, returns the map to the frame
   your current filters would give it — for when you have flown in on someone and changed
   your mind. It resets the view only: whoever you have open stays open.</p>
+<h2 id="numbers">The two numbers</h2>
+  <p>The masthead carries two figures, and the first thing anyone asks is why they do not
+  add up to the total. They are not meant to. <strong>They are nested, not side by side.</strong>
+  Each now carries its denominator on screen for exactly that reason.</p>
+  <table>
+    <tr><th>Reads</th><th>Means</th></tr>
+    <tr><td class="wrap-first">3,620 <em>of 7,032</em><br>gone quiet</td>
+      <td>Everyone no source has seen in over 90 days — <code>dormant</code> plus
+      <code>inactive</code>. A fraction of everyone currently in view.</td></tr>
+    <tr><td class="wrap-first">1,035 <em>of those</em><br>reachable now</td>
+      <td>How many of <em>that 3,620</em> have an active person within 100 miles. A slice
+      of the figure to its left, not a separate group.</td></tr>
+  </table>
+  <p>So the whole 7,032 divides like this, and these six do sum to the total. They are the
+  chips above the queue, and each one is a filter:</p>
+  <table>
+    <tr><th>Status</th><th>Count</th><th>In the headline?</th></tr>
+    <tr><td>active</td><td class="tabular">337</td><td>no</td></tr>
+    <tr><td>new</td><td class="tabular">40</td><td>no</td></tr>
+    <tr><td>slowing</td><td class="tabular">278</td><td>no</td></tr>
+    <tr><td>dormant</td><td class="tabular">424</td><td><strong>yes</strong></td></tr>
+    <tr><td>inactive</td><td class="tabular">3,196</td><td><strong>yes</strong></td></tr>
+    <tr><td>unknown</td><td class="tabular">2,757</td><td>no — see below</td></tr>
+    <tr><td><strong>total</strong></td><td class="tabular"><strong>7,032</strong></td><td></td></tr>
+  </table>
+  <div class="note">
+    <strong>The 2,757 unknowns are the number to be ready for.</strong> That is 39% of the
+    dataset, and they are excluded from “gone quiet” on purpose: we have never seen
+    them active, so we cannot say they went quiet. They joined a channel and read without
+    posting, or their work happens somewhere none of the three sources can see. Counting
+    them as quiet would inflate the headline by a factor of nearly two on evidence we do
+    not have.
+  </div>
+  <p>Both headline figures are measured against the <em>population</em> — place, state
+  and search — and never against the status filter. Pressing one of them therefore does
+  not move it, and narrowing to Dormant does not empty the pool of active neighbours the
+  reachability is measured from.</p>
+
 <h2 id="read">How to read it</h2>
   <h3>Status</h3>
   <table>
@@ -267,7 +348,8 @@
     <tr><td>Solid dot</td><td>A real city from their profile</td></tr>
     <tr><td>Hollow dot</td><td>A country only. They wrote "Germany," so the dot sits at the
       middle of Germany and means nothing more precise</td></tr>
-    <tr><td>Bigger dot</td><td>Someone holding an official role</td></tr>
+    <tr><td>Bigger dot, heavier ring</td><td>Someone holding a Community Team role. This
+      is the only thing that marks them on the map, so the key spells it out</td></tr>
     <tr><td>Not on the map</td><td>4,174 people. Their profile has no location. They are
       still in the table and the counts</td></tr>
   </table>

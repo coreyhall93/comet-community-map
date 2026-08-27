@@ -22,10 +22,13 @@
     <div class="counters" id="counters" aria-live="polite"></div>
   </header>
 
-  <!-- Four families, in the order you use them, not nine peers in a row.
-       WHO EXISTS decides the population. NARROW filters that population.
-       DRAW changes how it is shown. The action sits apart on the right,
-       because a place your work collects is not another filter. -->
+  <!-- EVERY FILTER IS ADDITIVE AND EVERY LAYER IS A TOGGLE.
+       Row one scopes the population: where, and what you are looking for.
+       Row two is what gets drawn at all. Rows three and four are the chips for
+       whatever is switched on, full width because they are the main filter
+       surface and not an afterthought tucked inside a group. The working set
+       sits apart on the right, because a place your work collects is not
+       another filter. -->
   <div class="controls">
     <div class="family" aria-label="Who exists">
       <div class="group">
@@ -43,26 +46,18 @@
         <select id="f-state" class="field"><option value="">All states</option></select>
       </div>
 
-      <div class="group">
-        <span class="label">Who</span>
-        <div class="seg" role="group" aria-label="Population">
-          <button id="p-roster" aria-pressed="true"
-            title="People with an official Community Team role, plus people found doing the work without one.">Has a role</button>
-          <button id="p-all" aria-pressed="false"
-            title="Everyone in #community-events or #community-team on Make WordPress Slack.">Everyone in Slack</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="family" aria-label="Narrow">
-      <div class="group">
-        <label class="label" for="f-status">Status</label>
-        <select id="f-status" class="field"><option value="">All</option></select>
-      </div>
-
+      <!-- No "Who" toggle. It switched the entire population, which made it a
+           mode: the same link showed 96 people or 7,032 depending on a control
+           two clicks away, and it could land on the wrong one. Everyone in the
+           two Slack channels is always the population now, and the people
+           holding a Community Team role are LABELLED instead -- a badge in the
+           list and the record, a ringed marker on the map, the Role column in
+           the table, and "role" is searchable. Nobody is hidden to make them
+           findable. -->
       <div class="group">
         <label class="label" for="q">Search</label>
-        <input id="q" class="field" type="search" placeholder="Name, place, or handle" autocomplete="off">
+        <input id="q" class="field" type="search"
+               placeholder="Name, place, handle, or role" autocomplete="off">
       </div>
     </div>
 
@@ -76,10 +71,12 @@
       </div>
 
       <div class="group">
-        <span class="label">Layers</span>
-        <!-- Filled from the layer registry in app.js; adding a layer is a
-             descriptor there, not another button here. -->
-        <div class="seg" role="group" aria-label="Map layers" id="layer-toggles"></div>
+        <span class="label">Show</span>
+        <!-- People, Meetups, Automatticians. Filled from the layer registry in
+             app.js; adding a layer is a descriptor there, not another button
+             here. People is in this strip too: "toggle everything" is not true
+             if one of the three is an always-on background. -->
+        <div class="seg" role="group" aria-label="Layers" id="layer-toggles"></div>
       </div>
     </div>
 
@@ -95,10 +92,12 @@
       </div>
     </div>
 
-    <!-- Narrowing chips for whichever layers are on, generated from the same
-         registry as the toggles. A full-width line of its own, because inside
-         the Layers group it was 777px wide and pushed the whole bar to three
-         rows. Empty, and therefore invisible, until a layer is turned on. -->
+    <!-- The chips: people statuses, then one row per layer that has values
+         worth choosing between. Full-width lines of their own, because inside a
+         group the meetup row alone was 777px wide and pushed the whole bar to
+         three rows -- and because these are the main filter surface, not a
+         detail. Each is empty, and therefore invisible, until its layer is on. -->
+    <div id="status-filters" class="layer-filters"></div>
     <div id="layer-filters" class="layer-filters"></div>
   </div>
 

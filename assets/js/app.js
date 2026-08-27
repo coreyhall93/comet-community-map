@@ -2622,20 +2622,31 @@
         throw fail("Could not load the data (HTTP " + r.status + "). This is not " +
                    "the passphrase — the encrypted file is missing or unreachable.");
       }
-      // A partial or truncated body fails the HMAC exactly like a wrong
-      // passphrase does, and the person retyping their passphrase will never
-      // get anywhere. Catch it here, where we can still tell the difference.
+      // A truncated body fails the HMAC exactly like a wrong passphrase does,
+      // and someone retyping their passphrase will never get anywhere. So it is
+      // worth catching, but ONLY where the comparison is honest.
+      //
+      // content-length describes the bytes ON THE WIRE. arrayBuffer() returns
+      // the bytes AFTER decoding. Where the server gzips, those two are
+      // different numbers and comparing them accuses a perfectly good download.
+      // Ciphertext does not compress, so gzip makes it slightly LARGER: GitHub
+      // Pages serves 4,385,601 encoded bytes for a 4,384,243-byte file, and
+      // this check called that "incomplete" and locked the whole team out.
+      var encoded = r.headers.get("content-encoding");
       var declared = parseInt(r.headers.get("content-length") || "0", 10);
       return r.arrayBuffer().then(function (buf) {
-        if (declared && buf.byteLength !== declared) {
+        if (!encoded && declared && buf.byteLength !== declared) {
           throw fail("The data file arrived incomplete (" +
                      buf.byteLength.toLocaleString() + " of " +
                      declared.toLocaleString() + " bytes). This is not the " +
                      "passphrase. Reload the page and try again.");
         }
-        if (buf.byteLength < 1024) {
+        // Works whatever the transfer encoding: a file this small cannot be the
+        // payload, so it is a failed or partial fetch rather than a bad key.
+        if (buf.byteLength < 100000) {
           throw fail("The data file is too small to be real (" +
-                     buf.byteLength + " bytes). This is not the passphrase.");
+                     buf.byteLength.toLocaleString() + " bytes). This is not " +
+                     "the passphrase — the download did not complete.");
         }
         return buf;
       });

@@ -67,6 +67,7 @@
 
   <nav class="toc">
     <a href="#what">What this is</a>
+    <a href="#using">Using it</a>
     <a href="#read">How to read it</a>
     <a href="#roles">Roles</a>
     <a href="#data">Where the data comes from</a>
@@ -91,12 +92,74 @@
   <table>
     <tr><th>Group</th><th>Who</th><th>Count</th></tr>
     <tr><td>Roster</td><td>Official Event Supporters, Program Supporters and Program
-      Managers from the Community Team page</td><td>80</td></tr>
+      Managers from the Community Team page</td><td>74</td></tr>
     <tr><td>Found</td><td>People doing supporter work who are on no roster. Found by their
-      work, not their title</td><td>16</td></tr>
+      work, not their title</td><td>22</td></tr>
     <tr><td>Community</td><td>Everyone else in <code>#community-events</code> or
-      <code>#community-team</code></td><td>6,944</td></tr>
+      <code>#community-team</code></td><td>6,936</td></tr>
   </table>
+
+  <h2 id="using">Using it</h2>
+
+  <h3>Two modes</h3>
+  <p>The switch at the top decides what the tool is for at that moment.</p>
+  <table>
+    <tr><th>Mode</th><th>What it is for</th></tr>
+    <tr><td><strong>Triage</strong></td><td>Working the list. The ranked queue of people who
+      have gone quiet sits on the left and does not move; picking someone opens their record
+      in its place, and the map follows them.</td></tr>
+    <tr><td><strong>Explore</strong></td><td>Looking around. The map takes the whole width.
+      Pick anyone on it and you are handed back to Triage on that person, so you never have
+      to switch modes by hand.</td></tr>
+  </table>
+
+  <h3>Working the queue</h3>
+  <p>The queue is ranked, not sorted by how long someone has been quiet. People with an
+  active person within reach come first, because those are the ones you can act on today.
+  Anyone with nobody in range sits at the bottom: that is a coverage gap, not a lead.</p>
+  <ul>
+    <li><strong>&uarr; and &darr;</strong> move through the queue without going back to it.</li>
+    <li><strong>Esc</strong> closes a record. The queue returns exactly where you left it.</li>
+    <li><strong>Show more</strong> extends the queue sixty at a time.</li>
+  </ul>
+
+  <h3>Narrowing</h3>
+  <table>
+    <tr><th>Control</th><th>What it does</th></tr>
+    <tr><td>Place</td><td>Global, or one country. The number in each option is the number of
+      people you get.</td></tr>
+    <tr><td>State</td><td>Appears only for the United States. Derived from what people typed
+      on their .org profile, so it is not complete: the list says how many have no state on
+      record rather than hiding them.</td></tr>
+    <tr><td>Who</td><td>Role-holders, or everyone in the two Slack channels.</td></tr>
+    <tr><td>Status</td><td>One status at a time. The headline numbers are also buttons.</td></tr>
+    <tr><td>Search</td><td>Name, place or handle.</td></tr>
+  </table>
+
+  <h3>Layers</h3>
+  <p>Meetups and Automatticians draw on top of the people. <strong>Shape is the layer,
+  colour is the status</strong>, so the two can be read independently and neither depends on
+  telling colours apart. Turning a layer on gives it its own filter chips; meetups can be
+  narrowed to Active, Dormant or Not started.</p>
+  <p>The key is on the map itself, behind the button under the zoom controls.</p>
+
+  <h3>Sending someone a view</h3>
+  <p>The address bar tracks what you are looking at, so copy it and paste it. Mode, place,
+  state, who, status, search and the person you have open all travel. Whoever opens it enters
+  the passphrase and lands exactly where you were.</p>
+  <div class="note">
+    <strong>A link carries a name, never a judgement.</strong> The only thing about a person
+    that travels in a link is their WordPress.org username, which is already public on their
+    profile. Their status, last-seen date, employer and location never do. This tool exists to
+    re-engage people, not to circulate a list of who has gone quiet.
+  </div>
+
+  <h3>Working set, and the map</h3>
+  <p>Marking people, meetups and Automatticians collects them in the working set, which
+  survives filtering and reload, and exports to CSV. It is your own scratch list; it is not
+  shared, and it does not travel in a link.</p>
+  <p>The button under the zoom controls returns the map to the view your current filters
+  would give it, for when you have flown in on someone and changed your mind.</p>
 
   <h2 id="read">How to read it</h2>
   <h3>Status</h3>
@@ -166,8 +229,9 @@
     <tr><td>Activity — Slack</td><td>A per-person message search across every channel our
       account can see, thread replies included.</td></tr>
     <tr><td>Activity — Help Scout</td><td>Last-seen date for the 103 people with Help Scout
-      accounts. Matched on name, because that screen exposes no email address, so anyone
-      whose name is shared by another community member is skipped rather than guessed.</td></tr>
+      accounts. Matched on the WordPress.org username where the API's email gives one, and on
+      name otherwise; a name shared by another community member is skipped rather than
+      guessed.</td></tr>
     <tr><td>Activity — GitHub</td><td>Issues, pull requests and comments across the main
       WordPress repositories. Matched on the GitHub link people put on their own
       WordPress.org profile, which is an exact join. Matching by identical username was
@@ -178,18 +242,30 @@
       location, no dot. Nothing is inferred.</td></tr>
   </table>
 
+  <h3>How fresh each source is</h3>
+  <p>Sources are pulled on different days, so they are not equally current. This build is
+  dated <strong>2026-08-26</strong>, which is the newest thing in it.</p>
+  <table>
+    <tr><th>Source</th><th>Current to</th><th>People it has seen</th></tr>
+    <tr><td>GitHub</td><td>2026-08-26</td><td>153 people</td></tr><tr><td>Help Scout</td><td>2026-08-26</td><td>68 people</td></tr><tr><td>Slack</td><td>2026-08-26</td><td>4,219 people</td></tr>
+  </table>
+  <p>If one source falls behind the others, someone quiet in it may simply not have been
+  swept since. That is why status is the freshest signal across all of them rather than any
+  single one.</p>
+
   <h2 id="limits">What it cannot see</h2>
   <ul>
-    <li><strong>Coverage is uneven between sources.</strong> Slack sees 4,217 people,
-      GitHub 49 and Help Scout 62 — because only 103 people have Help Scout accounts at
-      all, and a GitHub link is only found where someone put one on their profile. An
-      absent signal means we could not look, not that nothing happened.</li>
+    <li><strong>Coverage is uneven between sources.</strong> Slack sees
+      4,219 people, GitHub 153 and Help Scout
+      68 — because only 103 people have Help Scout accounts at all, and
+      a GitHub link is only found where someone put one on their profile. An absent signal
+      means we could not look, not that nothing happened.</li>
     <li><strong>WordCamp and meetup organising.</strong> Not yet a source. Someone running
       events every month can still read as quiet here.</li>
     <li><strong>Private channels we are not in.</strong> Activity there reads as silence.</li>
     <li><strong>Anything off Slack and WordPress.org.</strong> GitHub, WordCamp organising,
       Meetup.com, and real life.</li>
-    <li><strong>Location, for 4,176 people.</strong> They never filled the field in. There is
+    <li><strong>Location, for 4,174 people.</strong> They never filled the field in. There is
       no way to recover this from their profile, only by asking.</li>
     <li><strong>Ambiguous places.</strong> A bare "Georgia" could be the country or the US
       state. Where it is genuinely unclear, the person is left unplaced rather than dropped
@@ -219,7 +295,7 @@
   <p>The map answers "who is near this person." For anything more specific, take the data to
   an AI agent. No setup, no connector.</p>
   <ol>
-    <li>Set the filters you want on the map, or leave them wide.</li>
+    <li>Set the filters you want, or leave them wide. The export follows them.</li>
     <li>Switch to <strong>Table</strong> and click <strong>Export</strong>. You get a CSV of
       exactly the rows in view.</li>
     <li>Attach that CSV to Claude and ask.</li>

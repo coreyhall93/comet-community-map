@@ -18,74 +18,109 @@
       <p class="sub">Who has gone quiet, and who is near enough to reach them.
         <a href="about.html" class="about-link">About this data</a></p>
     </div>
+    <!-- Two jobs, two layouts. Triage puts the ranked queue first and shrinks
+         the map to context; Explore gives the map the whole stage. -->
+    <div class="seg mode" role="group" aria-label="Mode">
+      <button id="m-triage"  aria-pressed="true"
+        title="Work the ranked list of people who have gone quiet.">Triage</button>
+      <button id="m-explore" aria-pressed="false"
+        title="The whole population on a full-width map.">Explore</button>
+    </div>
     <div class="spacer"></div>
     <div class="counters" id="counters" aria-live="polite"></div>
   </header>
 
+  <!-- Four families, in the order you use them, not nine peers in a row.
+       WHO EXISTS decides the population. NARROW filters that population.
+       DRAW changes how it is shown. The action sits apart on the right,
+       because a place your work collects is not another filter. -->
   <div class="controls">
-    <div class="group">
-      <span class="label">View</span>
-      <div class="seg" role="group" aria-label="View">
-        <button id="v-map"   aria-pressed="true">Map</button>
-        <button id="v-table" aria-pressed="false">Table</button>
+    <div class="family" aria-label="Who exists">
+      <div class="group">
+        <label class="label" for="f-place">Place</label>
+        <!-- One control, not a Region toggle plus a Country dropdown. Those two
+             were ANDed, so United States + Brazil asked for people in both at
+             once and returned nobody. -->
+        <select id="f-place" class="field"><option value="">Global</option></select>
+      </div>
+
+      <!-- Only shown while Place is the United States: the state is derived
+           from free text and that derivation is US-only. -->
+      <div class="group" id="g-state" hidden>
+        <label class="label" for="f-state">State</label>
+        <select id="f-state" class="field"><option value="">All states</option></select>
+      </div>
+
+      <div class="group">
+        <span class="label">Who</span>
+        <div class="seg" role="group" aria-label="Population">
+          <button id="p-roster" aria-pressed="true"
+            title="People with an official Community Team role, plus people found doing the work without one.">Has a role</button>
+          <button id="p-all" aria-pressed="false"
+            title="Everyone in #community-events or #community-team on Make WordPress Slack.">Everyone in Slack</button>
+        </div>
       </div>
     </div>
 
-    <div class="group">
-      <span class="label">Region</span>
-      <div class="seg" role="group" aria-label="Region">
-        <button id="r-us"     aria-pressed="false">United States</button>
-        <button id="r-global" aria-pressed="true">Global</button>
+    <div class="family" aria-label="Narrow">
+      <div class="group">
+        <label class="label" for="f-status">Status</label>
+        <select id="f-status" class="field"><option value="">All</option></select>
+      </div>
+
+      <div class="group">
+        <label class="label" for="q">Search</label>
+        <input id="q" class="field" type="search" placeholder="Name, place, or handle" autocomplete="off">
       </div>
     </div>
 
-    <div class="group">
-      <span class="label">Who</span>
-      <div class="seg" role="group" aria-label="Population">
-        <button id="p-roster" aria-pressed="true"
-          title="People with an official Community Team role, plus people found doing the work without one.">Has a role</button>
-        <button id="p-all" aria-pressed="false"
-          title="Everyone in #community-events or #community-team on Make WordPress Slack.">Everyone in Slack</button>
+    <div class="family" aria-label="Draw">
+      <div class="group">
+        <span class="label">View</span>
+        <div class="seg" role="group" aria-label="View">
+          <button id="v-map"   aria-pressed="true">Map</button>
+          <button id="v-table" aria-pressed="false">Table</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">Layers</span>
+        <!-- Filled from the layer registry in app.js; adding a layer is a
+             descriptor there, not another button here. -->
+        <div class="seg" role="group" aria-label="Map layers" id="layer-toggles"></div>
       </div>
     </div>
 
-    <div class="group">
-      <span class="label">Layers</span>
-      <!-- Filled from the layer registry in app.js; adding a layer is a
-           descriptor there, not another button here. -->
-      <div class="seg" role="group" aria-label="Map layers" id="layer-toggles"></div>
-    </div>
+    <div class="spacer"></div>
 
-    <div class="group">
-      <label class="label" for="f-country">Country</label>
-      <select id="f-country" class="field"><option value="">All</option></select>
-    </div>
-
-    <div class="group">
-      <label class="label" for="f-status">Status</label>
-      <select id="f-status" class="field"><option value="">All</option></select>
-    </div>
-
-    <div class="group">
-      <span class="label">Working set</span>
-      <div class="seg" role="group" aria-label="Working set">
-        <button id="set-btn" aria-pressed="false"
-          title="Things you have marked while moving around the map. Survives filtering and reload.">Set</button>
+    <div class="family is-action" aria-label="Working set">
+      <div class="group">
+        <span class="label">Working set</span>
+        <div class="seg" role="group" aria-label="Working set">
+          <button id="set-btn" aria-pressed="false"
+            title="People, meetups and Automatticians you have marked while moving around. Survives filtering and reload.">Empty</button>
+        </div>
       </div>
     </div>
 
-    <div class="group">
-      <label class="label" for="q">Search</label>
-      <input id="q" class="field" type="search" placeholder="Name, place, or handle" autocomplete="off">
-    </div>
+    <!-- Narrowing chips for whichever layers are on, generated from the same
+         registry as the toggles. A full-width line of its own, because inside
+         the Layers group it was 777px wide and pushed the whole bar to three
+         rows. Empty, and therefore invisible, until a layer is turned on. -->
+    <div id="layer-filters" class="layer-filters"></div>
   </div>
 
-  <div class="stage" id="stage">
-    <div id="map" role="application" aria-label="Map of community supporters"></div>
+  <!-- Source order is column order: the grid auto-places these, and #map is
+       deliberately last so Triage reads queue, record, map. #map is never
+       re-parented once Leaflet has initialised on it; it is placed, not moved. -->
+  <div class="stage" id="stage" data-mode="triage">
+    <section class="rail" id="queue" aria-label="People who have gone quiet"></section>
 
-    <aside class="side" id="side">
+    <section class="rail" id="record" aria-label="Selected record">
       <div class="state" id="side-state"><strong>Loading…</strong>Reading the dataset.</div>
-    </aside>
+    </section>
+
+    <div id="map" role="application" aria-label="Map of community supporters"></div>
 
     <div class="tablewrap" id="tablewrap" hidden>
       <div class="tabletools">

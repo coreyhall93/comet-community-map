@@ -190,6 +190,10 @@ body {
 .group > .label { margin: 0; }
 
 .seg { display: inline-flex; background: var(--tint); border-radius: 8px; padding: 2px; gap: 2px; }
+/* The mode switch is the one control that changes what the tool is for, so it
+   sits in the masthead at a size the filter bar's segments do not use. */
+.seg.mode { padding: 3px; align-self: center; }
+.seg.mode button { padding: 0.35rem 1.15rem; font-size: var(--t-body); font-weight: 600; }
 .seg button {
   border: 0; background: transparent; color: var(--slate);
   font: inherit; font-size: var(--t-small); font-weight: 550;
@@ -207,16 +211,70 @@ body {
 .field:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* Body: map + side panel */
-.stage { display: grid; grid-template-columns: 1fr 22rem; min-height: 0; }
+/* Two modes, two layouts. Triage is queue | record | map; Explore is map alone.
+   minmax(0,1fr) on the map track, never a bare 1fr: 1fr means minmax(auto,1fr),
+   and with 920px of fixed siblings an auto minimum lets the map refuse to
+   shrink and overflow the grid instead. */
+.stage { display: grid; min-height: 0; }
 #map { width: 100%; height: 100%; background: var(--tint); }
-.stage.is-table { grid-template-columns: 1fr; }
 
-.side {
-  border-left: 1px solid var(--hair);
+/* One rail, not two. The rail holds the queue until you pick someone, and then
+   the record takes that same slot. Three columns spent 920px of a 1440px screen
+   on text and left the map a strip; worse, it pushed the map out entirely on
+   anything smaller. The queue does not lose your place when it steps aside --
+   its scroll position and the arrow keys both survive the swap. */
+.stage[data-mode="triage"] {
+  grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+}
+.stage[data-mode="triage"] #record { display: none; }
+.stage[data-mode="triage"].has-record #queue { display: none; }
+.stage[data-mode="triage"].has-record #record { display: block; }
+
+.stage[data-mode="explore"] { grid-template-columns: minmax(0, 1fr); }
+.stage[data-mode="explore"] #queue,
+.stage[data-mode="explore"] #record { display: none; }
+
+/* render() hides panes with the hidden attribute, and .rail sets an explicit
+   display, which beats the user-agent [hidden] rule. Without this the queue and
+   record paint on top of the table. */
+[hidden] { display: none !important; }
+
+/* With one rail instead of two there is nothing to drop until the screen is
+   genuinely small, and the map never disappears on the way down: it was the
+   thing being hidden before, which is the wrong thing to hide on a map. */
+@media (max-width: 900px) {
+  .stage[data-mode="triage"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: 45vh minmax(0, 1fr);
+  }
+  .stage[data-mode="triage"] #map { grid-row: 1; }
+  .stage[data-mode="triage"] #queue,
+  .stage[data-mode="triage"] #record { grid-row: 2; border-right: 0; border-top: 1px solid var(--hair); }
+}
+
+/* Source order matters: this and the mode rules have the same specificity, so
+   Table view would otherwise render in three columns. */
+.stage.is-table { grid-template-columns: minmax(0, 1fr); }
+.stage.is-table #queue, .stage.is-table #record, .stage.is-table #map { display: none; }
+
+/* One seam per column, on the trailing edge, never both edges of adjacent
+   panes or the hairline doubles where they meet. */
+.rail {
+  border-right: 1px solid var(--hair);
   background: var(--panel);
   overflow-y: auto;
+  min-height: 0;
   padding: var(--s-4);
 }
+.stage[data-mode="triage"] #record { border-right: 1px solid var(--hair); }
+.stage[data-mode="explore"] .rail,
+.stage.is-table .rail { border-right: 0; }
+
+/* Selects carry an intrinsic min-width that overflows a narrow column. This
+   was scoped to the 560px media query; the same failure now happens at desktop
+   width inside a 440px queue. */
+.rail .field { min-width: 0; max-width: 100%; }
+.rail select.field { width: 100%; }
 
 /* Rows, never cards. Square at rest so the hairline stays straight. */
 .row {
@@ -229,7 +287,19 @@ body {
   padding-right: var(--s-2);
 }
 .row:last-child { border-bottom: 0; }
-.row:hover { background: var(--tint); border-radius: 8px; transition: background var(--m-fast-in); }
+/* Suppress the hairline on the tinted states. A row is square at rest so the
+   hairline stays straight; adding a radius on hover curves its ends up into the
+   corner. Invisible in a 352px rail, the dominant texture of a 440px queue. */
+.row:hover { background: var(--tint); border-radius: 8px; border-bottom-color: transparent;
+             transition: background var(--m-fast-in); }
+
+/* The row you last opened, so coming back out of a record tells you where you
+   got to. A tint and a heavier name, not an accent rail: the queue is read as a
+   column of names, and a coloured bar down the side competes with the status
+   tags that actually carry meaning here. */
+.row.is-viewed { background: var(--tint); border-radius: 8px; border-bottom-color: transparent; }
+.row.is-viewed .nm { font-weight: 650; }
+.subtle { color: var(--faint); }
 .row .nm { font-weight: 550; }
 .row .meta { font-size: var(--t-small); color: var(--slate); }
 .hint { font-size: var(--t-small); color: var(--faint); margin: 0 0 var(--s-3); }
@@ -480,9 +550,9 @@ td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(-
 
 .leaflet-popup-content { font-family: var(--sans); font-size: var(--t-small); }
 
-@media (max-width: 900px) {
-  .stage { grid-template-columns: 1fr; grid-template-rows: 55vh 1fr; }
-  .side { border-left: 0; border-top: 1px solid var(--hair); }
+@media (max-width: 760px) {
+  .stage[data-mode="explore"] { grid-template-rows: minmax(0, 1fr); }
+  .rail { border-right: 0; border-top: 1px solid var(--hair); }
   .masthead { padding: var(--s-3) var(--s-4); }
   .controls { padding: var(--s-2) var(--s-4); }
 }
@@ -643,3 +713,113 @@ td .def::after { width: 15rem; }
                  transform: scale(1.5); z-index: 500; }
 .pin.is-hot    { box-shadow: 0 0 0 4px rgba(255,255,255,0.9), 0 0 0 7px var(--accent);
                  transform: scale(1.6); z-index: 600; }
+
+/* Reset view. Sits under the zoom control and borrows Leaflet's own .leaflet-bar
+   chrome so it reads as part of the map, not as something bolted onto it. */
+.cm-reset a {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; color: var(--ink); background: var(--panel);
+}
+.cm-reset a:hover { background: var(--tint); color: var(--ink); }
+.cm-reset svg { display: block; }
+
+/* Map key. The panel hangs off the control rather than sitting inside the
+   .leaflet-bar, so the button keeps the zoom control's exact 30px chrome. */
+.cm-key { position: relative; }
+.cm-key a {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; color: var(--ink); background: var(--panel);
+}
+.cm-key a:hover { background: var(--tint); }
+.cm-key svg { display: block; }
+.cm-key-panel {
+  position: absolute; top: 0; left: calc(100% + 8px);
+  /* Wider than it first looks like it needs: at 17rem the two-column list
+     wrapped "always shown" and the longer status descriptions onto three ragged
+     lines each, which is most of what made the panel tall enough to overrun the
+     map. max-height is set in JS from the room actually available. */
+  width: 20rem; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--panel); border-radius: var(--radius);
+  box-shadow: 0 4px 18px rgba(16, 24, 40, .18);
+  padding: var(--s-4);
+}
+.cm-key-panel .legend dl { gap: var(--s-2) var(--s-3); }
+.cm-key-panel .legend dd { line-height: 1.4; }
+
+/* The reshaping ladder. Each step buys height a different way, so the key can
+   always be read whole instead of scrolled. */
+
+/* wide: the two sections stand side by side rather than stacked, which is the
+   single biggest height saving and costs nothing in legibility. */
+.cm-key-panel.wide { width: 34rem; }
+.cm-key-panel.wide .legend {
+  display: grid; grid-template-columns: 1fr 1fr;
+  column-gap: var(--s-5); align-items: start;
+}
+.cm-key-panel.wide .legend > p:nth-of-type(1)  { grid-column: 1; grid-row: 1; }
+.cm-key-panel.wide .legend > dl:nth-of-type(1) { grid-column: 1; grid-row: 2; }
+.cm-key-panel.wide .legend > p:nth-of-type(2)  { grid-column: 2; grid-row: 1; margin-top: 0; }
+.cm-key-panel.wide .legend > dl:nth-of-type(2) { grid-column: 2; grid-row: 2; }
+.cm-key-panel.wide .legend > p:nth-of-type(3)  { grid-column: 1 / -1; grid-row: 3; }
+
+/* compact: tighter rhythm and one step down the type scale. */
+.cm-key-panel.compact { padding: var(--s-3); }
+.cm-key-panel.compact .legend dl { gap: var(--s-1) var(--s-2); }
+.cm-key-panel.compact .legend dd,
+.cm-key-panel.compact .legend dt { font-size: var(--t-small); }
+.cm-key-panel.compact .legend > p:nth-of-type(2) { margin-top: var(--s-2); }
+
+/* bare: swatches and names only. The definitions are the first thing worth
+   losing, because the colours are what you came to look up. */
+.cm-key-panel.bare .legend dd { display: none; }
+.cm-key-panel.bare .legend dl { grid-template-columns: 1fr; }
+.cm-key-panel.bare .legend > p:nth-of-type(3) { display: none; }
+.cm-key-panel.bare { width: 15rem; }
+.cm-key-panel.wide.bare { width: 26rem; }
+.cm-key-panel .legend { margin: 0; }
+
+/* Derived columns carry no stored value to sort on, so they should not look
+   clickable next to headers that are. */
+th.no-sort { cursor: default; opacity: .72; }
+
+/* Per-layer narrowing. Sits with the toggle that produced it, and disappears
+   with it -- a filter for a hidden layer is furniture. */
+.layer-filters { display: flex; gap: var(--s-3); align-items: center; flex-wrap: wrap; }
+.layer-filters:empty { display: none; }
+.layer-chips { display: flex; gap: var(--s-1); align-items: center; }
+.layer-chips > .label { margin: 0 var(--s-1) 0 0; }
+
+/* Control families. The bar had grown to nine equal-looking groups operating at
+   four different levels: what population exists, how it is narrowed, how it is
+   drawn, and where marked work collects. A hairline between families and a gap
+   before the action reads that structure without labelling it. */
+/* Families wrap internally too. Without this a family is one unbreakable
+   row, and at 820px the Who segment alone pushed the bar 85px past the
+   edge with nowhere to go. */
+.controls .family { display: flex; align-items: center; gap: var(--s-4); flex-wrap: wrap; }
+.controls .family + .family {
+  padding-left: var(--s-4);
+  border-left: 1px solid var(--hair);
+}
+.controls .spacer { flex: 1 1 auto; }
+.controls .family.is-action { padding-left: 0; border-left: 0; }
+@media (max-width: 1200px) {
+  /* Once the bar wraps, a vertical hairline lands mid-row and reads as noise. */
+  .controls .family + .family { padding-left: 0; border-left: 0; }
+}
+
+/* The chips take a line of their own rather than widening the Layers group.
+   flex-basis 100% forces the wrap; :empty keeps the line from existing at all
+   when no layer is on. */
+.controls > .layer-filters { flex: 1 0 100%; }
+/* Selects were 12rem minimum apiece, which is more than their longest option
+   needs and cost a whole row across three of them. */
+.controls .field { min-width: 10rem; }
+.controls #q { min-width: 13rem; }
+
+/* Grid children default to min-width: auto, which means they refuse to shrink
+   below their own min-content width. At 820px the masthead, control bar and
+   stage all held themselves at 936px and pushed the page into a horizontal
+   scroll, while .app itself was correctly 820. This is the same reasoning as
+   minmax(0, 1fr) on the map track, applied one level up. */
+.app > * { min-width: 0; }

@@ -482,13 +482,19 @@ h2 .tag.role { vertical-align: middle; }
 /* Table view */
 .tablewrap { overflow: auto; padding: var(--s-4) var(--s-5) var(--s-6); }
 table { width: 100%; border-collapse: collapse; }
+/* Typography for every table header on the site, including the ones in the docs
+   and in the data note. */
 th {
   text-align: left; font-size: var(--t-label); letter-spacing: 0.09em;
   text-transform: uppercase; color: var(--faint); font-weight: 700;
   padding: 0 var(--s-3) var(--s-1) 0; border-bottom: 1px solid var(--hair);
-  position: sticky; top: 0; background: var(--ground); cursor: pointer;
   white-space: nowrap;
 }
+/* Sticky and clickable belong to the DATA table alone: those headers sort, and
+   the table scrolls under them. Left on the bare selector they also applied to
+   the docs and the data note, where nothing sorts -- so a header advertised a
+   click that did nothing, and floated over the rows mid-scroll. */
+#tbl th { position: sticky; top: 0; background: var(--ground); cursor: pointer; }
 td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair); vertical-align: top; }
 
 /* Legend: thresholds published on the page, per the roadmap rule. */
@@ -884,3 +890,118 @@ th.no-sort { cursor: default; opacity: .72; }
 /* The status breakdown, demoted from headline to supporting fact. */
 .breakdown { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: var(--s-3) 0 var(--s-2); }
 .hint.coverage { margin-bottom: var(--s-4); }
+
+/* ---------------------------------------------------------------------------
+   The data note.
+
+   A sheet, not a page: the question it answers gets asked while the tool is on
+   screen, so the answer arrives over the tool and leaves it exactly as it was.
+   Top-aligned and scrolled internally, because it is a document and a document
+   starts at its first line rather than floating in the middle of the viewport.
+   --------------------------------------------------------------------------- */
+.sheet {
+  width: min(58rem, calc(100vw - 2 * var(--s-5)));
+  max-height: min(86vh, 60rem);
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 24px 64px rgba(16, 24, 40, .28), 0 2px 8px rgba(16, 24, 40, .12);
+  overflow: hidden;
+  /* Anchored high rather than centred: a tall document centred vertically puts
+     its own first heading below the middle of the screen. */
+  margin: 6vh auto auto;
+}
+.sheet::backdrop { background: rgba(16, 24, 40, .45); }
+
+.note-head {
+  display: flex; align-items: baseline; gap: var(--s-4);
+  padding: var(--s-5) var(--s-6) var(--s-3);
+  border-bottom: 1px solid var(--hair);
+}
+.note-head h2 {
+  margin: 0; flex: 1;
+  font-size: var(--t-h2); font-weight: 650; letter-spacing: -0.01em;
+}
+.note-close {
+  font: inherit; font-size: var(--t-small); font-weight: 600;
+  color: var(--slate); background: transparent; border: 0; cursor: pointer;
+  padding: var(--s-2) var(--s-3); border-radius: 8px;
+  transition: background var(--m-fast-out), color var(--m-fast-out);
+}
+.note-close:hover { background: var(--tint); color: var(--ink); }
+
+.note-body {
+  overflow-y: auto;
+  max-height: calc(min(86vh, 60rem) - 5.5rem);
+  padding: var(--s-5) var(--s-6) var(--s-6);
+}
+.note-lead {
+  margin: 0 0 var(--s-5);
+  font-size: 1.06rem; line-height: 1.55; color: var(--slate);
+}
+.note-doc section { margin: 0 0 var(--s-6); }
+.note-doc h3 {
+  font-size: var(--t-h3); font-weight: 620; letter-spacing: -0.005em;
+  margin: 0 0 var(--s-2); padding-top: var(--s-4);
+  border-top: 1px solid var(--hair);
+}
+.note-doc section:first-of-type h3 { padding-top: 0; border-top: 0; }
+.note-doc p { margin: 0 0 var(--s-3); line-height: 1.6; }
+.note-doc ul { margin: 0 0 var(--s-3); padding-left: 1.15rem; }
+.note-doc li { margin-bottom: var(--s-2); line-height: 1.55; }
+
+.note-table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-3); }
+.note-table th {
+  text-align: left; font-size: var(--t-label); letter-spacing: .09em;
+  text-transform: uppercase; color: var(--faint); font-weight: 700;
+  padding: 0 var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair);
+}
+.note-table td {
+  padding: var(--s-2) var(--s-3) var(--s-2) 0;
+  border-bottom: 1px solid var(--hair); vertical-align: top; line-height: 1.5;
+}
+.note-table tr:last-child td { border-bottom: 0; }
+/* Right-aligned figures still need a gutter: at padding-right 0 the count and
+   the column beside it read as one token ("337no"). */
+.note-table .num { text-align: right; padding-right: var(--s-5); white-space: nowrap; }
+.note-table th.num { padding-right: var(--s-5); }
+/* Dates and figures never wrap: "2026-08-26" broken across two lines stops
+   reading as a date. */
+.note-table .tabular { white-space: nowrap; }
+/* Rows that feed the headline are tinted, never edged: this stylesheet puts no
+   coloured border on anything with a radius, and a tint says "these two" at a
+   glance where a fourth column of yes/no needs reading. */
+.note-table tr.is-counted td { background: var(--tint); }
+.note-table tr.is-total td { border-top: 2px solid var(--hair); border-bottom: 0; }
+/* The figure a row is about, set at the size it deserves. */
+.note-table td.fig {
+  font-size: 1.7rem; font-weight: 650; line-height: 1.15; letter-spacing: -0.02em;
+  width: 6.5rem; padding-top: var(--s-2);
+}
+.note-flag {
+  background: var(--tint); border-radius: 12px;
+  padding: var(--s-4) var(--s-4) var(--s-1);
+  margin-bottom: var(--s-6);
+}
+.note-flag h3 { padding-top: 0; border-top: 0; }
+
+button.about-link {
+  font: inherit; font-size: var(--t-small);
+  border: 0; background: transparent; cursor: pointer;
+  padding: 0; margin-left: var(--s-3);
+}
+
+@media (max-width: 700px) {
+  .sheet { margin: 2vh auto auto; max-height: 94vh; }
+  .note-body { max-height: calc(94vh - 5.5rem); padding: var(--s-4); }
+  .note-head { padding: var(--s-4) var(--s-4) var(--s-3); }
+  .note-table td.fig { font-size: 1.35rem; width: 4.5rem; }
+}
+
+/* Wide tables scroll in their own box. The sheet itself must never scroll
+   sideways: a document that slides out from under its own heading is broken,
+   and at 375px these are 457px wide. */
+.tscroll { overflow-x: auto; margin: 0 0 var(--s-3); -webkit-overflow-scrolling: touch; }
+.tscroll .note-table { margin-bottom: 0; min-width: 26rem; }

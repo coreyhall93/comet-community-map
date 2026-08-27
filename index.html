@@ -16,6 +16,11 @@
     <div>
       <h1>Community Map</h1>
       <p class="sub">Who has gone quiet, and who is near enough to reach them.
+        <!-- Two doors, deliberately. "The data" answers the questions asked in
+             the room during a demo and never leaves the tool; Docs is the long
+             read. Putting the first inside the second meant the answer to
+             "where does this number come from" was a page away. -->
+        <button type="button" class="about-link" id="open-data">The data</button>
         <a href="about.html" class="about-link">Docs</a></p>
     </div>
     <div class="spacer"></div>
@@ -139,6 +144,11 @@
   </div>
 
 </div>
+
+<!-- Built on open from the loaded dataset, never hand-written: every figure in
+     it is computed from the same file the map is drawing, so it cannot go stale
+     the way a paragraph of numbers in a doc does. -->
+<dialog id="datanote" class="sheet" aria-label="About this data"></dialog>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="assets/vendor/markercluster/leaflet.markercluster.js"></script>

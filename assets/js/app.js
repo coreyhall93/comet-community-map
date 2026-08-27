@@ -2531,7 +2531,23 @@
         throw fail("Could not load the data (HTTP " + r.status + "). This is not " +
                    "the passphrase — the encrypted file is missing or unreachable.");
       }
-      return r.arrayBuffer();
+      // A partial or truncated body fails the HMAC exactly like a wrong
+      // passphrase does, and the person retyping their passphrase will never
+      // get anywhere. Catch it here, where we can still tell the difference.
+      var declared = parseInt(r.headers.get("content-length") || "0", 10);
+      return r.arrayBuffer().then(function (buf) {
+        if (declared && buf.byteLength !== declared) {
+          throw fail("The data file arrived incomplete (" +
+                     buf.byteLength.toLocaleString() + " of " +
+                     declared.toLocaleString() + " bytes). This is not the " +
+                     "passphrase. Reload the page and try again.");
+        }
+        if (buf.byteLength < 1024) {
+          throw fail("The data file is too small to be real (" +
+                     buf.byteLength + " bytes). This is not the passphrase.");
+        }
+        return buf;
+      });
     }, function () {
       throw fail("Could not reach the data file. Check the connection — this is " +
                  "not the passphrase.");
@@ -2555,7 +2571,16 @@
               return crypto.subtle.verify("HMAC", mk, tag, signed);
             })
             .then(function (ok) {
-              if (!ok) throw new Error("bad passphrase");
+              if (!ok) {
+                // The tag covers the whole payload, so this fires for a wrong
+                // passphrase AND for a file that arrived corrupted. Length was
+                // already checked above, so a wrong passphrase is much the more
+                // likely of the two, but saying only that has sent people off
+                // retyping a passphrase that was never the problem.
+                throw fail("That passphrase did not open the file. If you are "
+                           + "sure it is right, the download may have been "
+                           + "corrupted \u2014 reload and try once more.");
+              }
               return crypto.subtle.importKey("raw", encRaw, { name: "AES-CTR" }, false, ["decrypt"]);
             })
             .then(function (ek) {
@@ -2578,7 +2603,17 @@
                        "people. It needs rebuilding — tell Corey.");
           }
           sessionStorage.setItem("cm-pass", pass);
-          boot(data);
+          // boot() runs inside this promise chain, so anything it throws used
+          // to surface as "wrong passphrase" -- the one message guaranteed to
+          // be false, since the data had already decrypted. The passphrase is
+          // saved above, which is why a reload then appeared to fix it.
+          try {
+            boot(data);
+          } catch (e) {
+            throw fail("The passphrase worked and the data loaded, but the page "
+                       + "failed to start: " + (e && e.message ? e.message : e)
+                       + ". Tell Corey \u2014 this is not the passphrase.");
+          }
         });
     });
   }

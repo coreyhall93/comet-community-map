@@ -7,6 +7,12 @@
 :root {
   --ground: #FCFCFD;
   --panel:  #FFFFFF;
+  /* The hollow centre of a quiet dot. Its own token because it is read against
+     the BASEMAP rather than a panel, and it tracks the ground in each theme so
+     hollow reads as a hole through to the map. It was var(--paper, #fff) with
+     --paper defined nowhere, so the fallback was doing all the work in one
+     theme and nothing said so. */
+  --paper:  #FFFFFF;
   --tint:   #F1F4F8;
 
   --ink:   #14181F;
@@ -63,7 +69,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #14171C; --panel: #1A1E24; --tint: #1B2027;
+    --ground: #14171C; --panel: #1A1E24; --tint: #1B2027; --paper: #14171C;
     --ink: #E9ECF1; --slate: #9AA4B2; --faint: #6C7683; --hair: #262B33;
     --accent: #4FB0F5;  --accent-soft: #1D2A38;
     --good: #5FD39A;  --good-soft: #16281E;
@@ -74,7 +80,7 @@
   }
 }
 :root[data-theme="light"] {
-  --ground:#FCFCFD; --panel:#FFFFFF; --tint:#F1F4F8;
+  --ground:#FCFCFD; --panel:#FFFFFF; --tint:#F1F4F8; --paper:#FFFFFF;
   --ink:#14181F; --slate:#5A6472; --faint:#8A93A1; --hair:#E4E7EC;
   --accent:#0B76D1; --accent-soft:#E8F1FB;
   --good:#1E7F52; --good-soft:#E4F4EC;
@@ -82,7 +88,7 @@
   --crit:#B3261E; --crit-soft:#FBE9E7;
 }
 :root[data-theme="dark"] {
-  --ground:#14171C; --panel:#1A1E24; --tint:#1B2027;
+  --ground:#14171C; --panel:#1A1E24; --tint:#1B2027; --paper:#14171C;
   --ink:#E9ECF1; --slate:#9AA4B2; --faint:#6C7683; --hair:#262B33;
   --accent:#4FB0F5; --accent-soft:#1D2A38;
   --good:#5FD39A; --good-soft:#16281E;
@@ -550,16 +556,29 @@ td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(-
 .pin.new      { background: var(--st-new); }
 .pin.slowing  { background: var(--st-slowing); }
 .pin.unknown  { background: var(--st-unknown); }
-/* Quiet states are hollow. Drawn with an inset ring rather than a border so the
-   dot keeps its stated size and nothing rounded carries a coloured border. */
-.pin.dormant  { background: var(--paper, #fff);
-                box-shadow: inset 0 0 0 3.5px var(--st-dormant),
-                            0 0 0 1.5px rgba(255,255,255,.95),
-                            0 0 0 3px rgba(16,24,40,.55); }
-.pin.inactive { background: var(--paper, #fff); opacity: .9;
-                box-shadow: inset 0 0 0 3px var(--st-inactive),
-                            0 0 0 1.5px rgba(255,255,255,.95),
-                            0 0 0 3px rgba(16,24,40,.55); }
+/* Quiet states are hollow, and the ring is painted with a GRADIENT rather than
+   an inset box-shadow. That is not a style preference, it is the fix for a real
+   bug:
+   
+   is-picked, is-hot, is-near and in-set all set box-shadow, and box-shadow is
+   one property. While the hollow ring lived there too, selecting or hovering a
+   dormant or inactive person wiped their status colour off the map and left a
+   bare white disc. It hit only the two hollow states, and only while they were
+   picked, hovered, marked or listed as near -- which is to say it hit the 3,620
+   people this tool exists for, at the exact moment someone was working on one.
+   .pin.is-roster did the same thing permanently to quiet role-holders.
+
+   Now background carries STATUS and box-shadow carries STATE. They are separate
+   properties and cannot overwrite each other, so any state added later is safe
+   by construction. The stops are percentages, so one rule fits the 16px dot and
+   the 20px role-holder without a second. */
+.pin.dormant  { background: radial-gradient(circle at 50% 50%,
+                  var(--paper) 0 calc(50% - 3.5px),
+                  var(--st-dormant) calc(50% - 3.5px) 100%); }
+.pin.inactive { opacity: .9;
+                background: radial-gradient(circle at 50% 50%,
+                  var(--paper) 0 calc(50% - 3px),
+                  var(--st-inactive) calc(50% - 3px) 100%); }
 /* A role-holder gets a heavier outer ring, added to the shared two-ring
    treatment rather than replacing it -- replacing it was why roster dots lost
    their contrast against the basemap. */
@@ -952,17 +971,44 @@ th.no-sort { cursor: default; opacity: .72; }
 .note-doc ul { margin: 0 0 var(--s-3); padding-left: 1.15rem; }
 .note-doc li { margin-bottom: var(--s-2); line-height: 1.55; }
 
+/* The sheet shows about.html's own markup, so these apply to plain tables in
+   the note body as well as to anything carrying .note-table. */
+.note-body table,
 .note-table { width: 100%; border-collapse: collapse; margin: 0 0 var(--s-3); }
+.note-body th, .note-table th,
+.note-body td, .note-table td { text-align: left; }
+.note-body .note { background: var(--tint); border-radius: 12px;
+                   padding: var(--s-4); margin: 0 0 var(--s-4); line-height: 1.55; }
+.note-body .lead-sm { font-size: 1.02rem; line-height: 1.55; color: var(--slate);
+                      margin: 0 0 var(--s-5); }
+/* The "reads / means" table pairs a figure with a paragraph. Without a floor on
+   the first column the paragraph takes everything and the figure wraps onto four
+   lines, which is the opposite of a headline. Set here rather than in about.html
+   so the docs page and the in-tool sheet agree. */
+td.wrap-first { min-width: 8.5rem; }
+.note-body td.wrap-first { font-weight: 600; color: var(--ink); }
+.note-body code { font-size: 0.92em; background: var(--tint);
+                  padding: 0.08em 0.34em; border-radius: 5px; }
+.note-body a { color: var(--accent); }
+.note-link { font-size: var(--t-small); color: var(--accent); text-decoration: none;
+             margin-right: var(--s-3); }
+.note-link:hover { text-decoration: underline; }
+.note-body th,
 .note-table th {
   text-align: left; font-size: var(--t-label); letter-spacing: .09em;
   text-transform: uppercase; color: var(--faint); font-weight: 700;
   padding: 0 var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(--hair);
 }
+.note-body td,
 .note-table td {
   padding: var(--s-2) var(--s-3) var(--s-2) 0;
   border-bottom: 1px solid var(--hair); vertical-align: top; line-height: 1.5;
 }
+.note-body tr:last-child td,
 .note-table tr:last-child td { border-bottom: 0; }
+/* about.html marks the running total with a bold cell; tint the whole row the
+   way the tool's own status table does. */
+.note-body tr:last-child td strong { font-weight: 700; }
 /* Right-aligned figures still need a gutter: at padding-right 0 the count and
    the column beside it read as one token ("337no"). */
 .note-table .num { text-align: right; padding-right: var(--s-5); white-space: nowrap; }

@@ -134,7 +134,7 @@
       <a href="#what" data-sec="what">What this is</a>
       <a href="#using" data-sec="using">Using it</a>
       <p class="nav-group">Reading it</p>
-      <a href="#numbers" data-sec="numbers">The two numbers</a>
+      <a href="#numbers" data-sec="numbers">The data</a>
       <a href="#read" data-sec="read">How to read it</a>
       <a href="#roles" data-sec="roles">Roles</a>
       <p class="nav-group">The data</p>
@@ -273,49 +273,124 @@
   <p>Reset view, the circular arrow under the zoom controls, returns the map to the frame
   your current filters would give it — for when you have flown in on someone and changed
   your mind. It resets the view only: whoever you have open stays open.</p>
-<h2 id="numbers">The two numbers</h2>
-  <div class="note">
-    <strong>The same answers live inside the tool, under “The data” in the masthead.</strong>
-    That panel is built from the dataset the map has open, so its figures cannot drift from
-    the ones on screen. Use it when the question comes up mid-demo; use this page when you
-    want the long version.
-  </div>
-  <p>The masthead carries two figures, and the first thing anyone asks is why they do not
-  add up to the total. They are not meant to. <strong>They are nested, not side by side.</strong>
-  Each now carries its denominator on screen for exactly that reason.</p>
+<h2 id="numbers">The data, and every number in it</h2>
+  <!-- SINGLE SOURCE OF TRUTH. "The data" in the tool's masthead fetches this page
+       and shows the section below in a sheet, so the words exist once and cannot
+       drift between the two surfaces. Every figure in here is checked against
+       data/people.json on each build; build_data.py prints which one has gone
+       stale rather than silently letting it rot. -->
+  <section id="data-note">
+  <p class="lead-sm"><strong>7,032 people, 2,858 of them placed on the map, current to
+  2026-08-26.</strong> This section is the answer to the questions that get asked out loud
+  while the tool is on screen. It is also what the tool shows under “The data” in
+  its masthead, so the two can never say different things.</p>
+
+  <h3>The two headline numbers are nested, not side by side</h3>
+  <p>This is the first thing anyone asks. They are not meant to sum to 7,032:
+  <strong>the second is a slice of the first.</strong> Each carries its denominator on
+  screen for exactly that reason.</p>
   <table>
     <tr><th>Reads</th><th>Means</th></tr>
     <tr><td class="wrap-first">3,620 <em>of 7,032</em><br>gone quiet</td>
-      <td>Everyone no source has seen in over 90 days — <code>dormant</code> plus
+      <td>Everyone no source has seen in over 90 days: <code>dormant</code> plus
       <code>inactive</code>. A fraction of everyone currently in view.</td></tr>
     <tr><td class="wrap-first">1,035 <em>of those</em><br>reachable now</td>
       <td>How many of <em>that 3,620</em> have an active person within 100 miles. A slice
-      of the figure to its left, not a separate group.</td></tr>
+      of the figure to its left, not a separate group. The radius is adjustable inside a
+      person's record, so this number moves with it.</td></tr>
   </table>
-  <p>So the whole 7,032 divides like this, and these six do sum to the total. They are the
-  chips above the queue, and each one is a filter:</p>
+  <p>Both are measured against the <em>population</em> — place, state and search —
+  and never against the status chips. Pressing one of them therefore does not move it, and
+  narrowing to Dormant does not empty the pool of active neighbours the reachability is
+  measured from.</p>
+
+  <h3>The six statuses, which do sum to the total</h3>
+  <p>These are the chips above the list, and each one is a filter you can combine with any
+  other.</p>
   <table>
-    <tr><th>Status</th><th>Count</th><th>In the headline?</th></tr>
-    <tr><td>active</td><td class="tabular">337</td><td>no</td></tr>
-    <tr><td>new</td><td class="tabular">40</td><td>no</td></tr>
-    <tr><td>slowing</td><td class="tabular">278</td><td>no</td></tr>
-    <tr><td>dormant</td><td class="tabular">424</td><td><strong>yes</strong></td></tr>
-    <tr><td>inactive</td><td class="tabular">3,196</td><td><strong>yes</strong></td></tr>
-    <tr><td>unknown</td><td class="tabular">2,757</td><td>no — see below</td></tr>
-    <tr><td><strong>total</strong></td><td class="tabular"><strong>7,032</strong></td><td></td></tr>
+    <tr><th>Status</th><th>Means</th><th>People</th><th>Counted as gone quiet?</th></tr>
+    <tr><td>active</td><td>seen ≤30 days</td><td class="tabular">337</td><td>no</td></tr>
+    <tr><td>new</td><td>joined in the last 90 days, nothing on record yet</td>
+      <td class="tabular">40</td><td>no</td></tr>
+    <tr><td>slowing</td><td>31–92 days</td><td class="tabular">278</td><td>no</td></tr>
+    <tr><td>dormant</td><td>93–365 days</td><td class="tabular">424</td>
+      <td><strong>yes</strong></td></tr>
+    <tr><td>inactive</td><td>over a year</td><td class="tabular">3,196</td>
+      <td><strong>yes</strong></td></tr>
+    <tr><td>unknown</td><td>no signal in any source we can read</td>
+      <td class="tabular">2,757</td><td>no, see below</td></tr>
+    <tr><td><strong>total</strong></td><td></td>
+      <td class="tabular"><strong>7,032</strong></td><td></td></tr>
+  </table>
+  <p>These are the same thresholds
+  <a href="https://marutim.github.io/wp-events-dashboard/" target="_blank" rel="noreferrer noopener">Maruti's
+  meetup dashboard</a> uses, so both tools agree on what active means.</p>
+
+  <div class="note">
+    <strong>The number to be ready for: 2,757 unknown.</strong> That is 39% of the dataset,
+    and it is deliberately <em>not</em> counted as gone quiet. We have never seen these
+    people active, so we cannot say they went quiet. They joined a channel and read without
+    posting, or their work happens somewhere none of the three sources below can see.
+    Counting them would take the headline from 3,620 to 6,377 on evidence we do not have.
+    Treat it as no evidence either way, never as gone.
+  </div>
+
+  <h3>Where a last-seen date comes from</h3>
+  <p>Status is the freshest signal from <em>any</em> of these, not from Slack alone. Someone
+  silent in Slack for two years while filing pull requests every week reads as active, and
+  the record says which source saw them.</p>
+  <table>
+    <tr><th>Source</th><th>What it proves</th><th>Current to</th><th>Has seen</th>
+      <th>Freshest for</th></tr>
+    <tr><td><strong>Slack</strong></td><td>Posts and thread replies across every channel,
+      not just the two community ones.</td><td class="tabular">2026-08-26</td>
+      <td class="tabular">4,219</td><td class="tabular">4,061</td></tr>
+    <tr><td><strong>Help Scout</strong></td><td>Replies in the community support queue.
+      Work that never touches Slack.</td><td class="tabular">2026-08-26</td>
+      <td class="tabular">68</td><td class="tabular">49</td></tr>
+    <tr><td><strong>GitHub</strong></td><td>Issues and pull requests in the WordPress org,
+      matched from their own profile link.</td><td class="tabular">2026-08-26</td>
+      <td class="tabular">153</td><td class="tabular">125</td></tr>
   </table>
   <div class="note">
-    <strong>The 2,757 unknowns are the number to be ready for.</strong> That is 39% of the
-    dataset, and they are excluded from “gone quiet” on purpose: we have never seen
-    them active, so we cannot say they went quiet. They joined a channel and read without
-    posting, or their work happens somewhere none of the three sources can see. Counting
-    them as quiet would inflate the headline by a factor of nearly two on evidence we do
-    not have.
+    <strong>Those last two columns are different questions, which is why the numbers
+    differ.</strong> “Has seen” is everyone that source has a date for at all.
+    “Freshest for” is the smaller group whose <em>most recent</em> signal came from
+    it. GitHub has seen 153 people; for 125 of them it is the newest thing we have, and the
+    other 28 have been in Slack more recently. Status uses the freshest, so nobody is
+    counted twice.
   </div>
-  <p>Both headline figures are measured against the <em>population</em> — place, state
-  and search — and never against the status filter. Pressing one of them therefore does
-  not move it, and narrowing to Dormant does not empty the pool of active neighbours the
-  reachability is measured from.</p>
+  <p>4,235 people have a date from at least one source. The other 2,797 have none, and those
+  are exactly the 2,757 unknown plus the 40 new.</p>
+
+  <h3>Who is counted</h3>
+  <table>
+    <tr><th>Count</th><th>Group</th></tr>
+    <tr><td class="tabular">74</td><td><strong>On the roster.</strong> Event Supporters,
+      Program Supporters and Program Managers from the Community Team page.</td></tr>
+    <tr><td class="tabular">22</td><td><strong>Found by their work.</strong> Vetting
+      applications or answering organizers without being listed anywhere.</td></tr>
+    <tr><td class="tabular">6,936</td><td><strong>In the channels.</strong> Everyone else in
+      <code>#community-events</code> or <code>#community-team</code>.</td></tr>
+  </table>
+  <p>All three are always shown together. The first two carry a role badge and a ringed dot
+  on the map; nothing is hidden to make a group findable. The map also carries 708 meetup
+  groups and 1,346 Automatticians as separate layers.</p>
+
+  <h3>What it cannot see</h3>
+  <ul>
+    <li><strong>4,174 people have no dot.</strong> Their .org profile has no location. They
+      are still counted and still in the table. Nothing is ever placed on a guess.</li>
+    <li><strong>A green meetup and a green person are not the same thing.</strong> Meetup
+      status uses a 365-day active window set upstream; people use 30 days. One meeting a
+      quarter is a healthy group and a silent quarter is not a healthy person.</li>
+    <li><strong>Automatticians cannot be filtered by Place.</strong> automattic.com/map
+      publishes coordinates and no country, and this tool does not infer one.</li>
+    <li><strong>Work outside these three sources is invisible.</strong> Forums, translation,
+      WordCamp organising and mentoring do not reach any of them, so somebody genuinely busy
+      can read as quiet.</li>
+  </ul>
+  </section>
 
 <h2 id="read">How to read it</h2>
   <h3>Status</h3>
@@ -351,14 +426,23 @@
 
   <h3>The map</h3>
   <table>
-    <tr><td>Solid dot</td><td>A real city from their profile</td></tr>
-    <tr><td>Hollow dot</td><td>A country only. They wrote "Germany," so the dot sits at the
-      middle of Germany and means nothing more precise</td></tr>
+    <tr><td>Solid dot</td><td>Active, new, slowing or unknown. The fill is the status.</td></tr>
+    <tr><td>Hollow dot</td><td><strong>Dormant or inactive.</strong> Hollow reads as
+      “not currently giving off signal”, so status survives being printed in
+      greyscale or seen by someone colour-blind.</td></tr>
     <tr><td>Bigger dot, heavier ring</td><td>Someone holding a Community Team role. This
       is the only thing that marks them on the map, so the key spells it out</td></tr>
     <tr><td>Not on the map</td><td>4,174 people. Their profile has no location. They are
       still in the table and the counts</td></tr>
   </table>
+  <div class="note">
+    <strong>A dot never tells you how precise a location is.</strong> Someone who wrote
+    “Germany” sits at the middle of Germany and looks exactly like someone who
+    wrote “Berlin”. The distinction is real and it is recorded, but it is shown in
+    words rather than in the dot: their record and their map popup both say
+    <em>(country only)</em>. An earlier version of this page claimed hollow dots carried
+    it. They never did.
+  </div>
   <p>Selecting a person zooms to them so you can see who surrounds them. Clicking any of
   their nearby people selects that person in turn.</p>
 <h2 id="roles">Roles</h2>
@@ -399,26 +483,21 @@
 
   <h3>How fresh each source is</h3>
   <p>Sources are pulled on different days, so they are not equally current. This build is
-  dated <strong>2026-08-26</strong>, which is the newest thing in it.</p>
-  <table>
-    <tr><th>Source</th><th>Current to</th><th>People it has seen</th></tr>
-    <tr><td>GitHub</td><td>2026-08-26</td><td>153 people</td></tr><tr><td>Help Scout</td><td>2026-08-26</td><td>68 people</td></tr><tr><td>Slack</td><td>2026-08-26</td><td>4,219 people</td></tr>
-  </table>
+  dated <strong>2026-08-26</strong>, which is the newest thing in it. The per-source dates
+  and counts are in the table under <a href="#numbers">The data</a>, kept in one place so
+  the two cannot disagree.</p>
   <p>If one source falls behind the others, someone quiet in it may simply not have been
   swept since. That is why status is the freshest signal across all of them rather than any
   single one.</p>
 <h2 id="limits">What it cannot see</h2>
   <ul>
-    <li><strong>Coverage is uneven between sources.</strong> Slack sees
-      4,219 people, GitHub 153 and Help Scout
-      68 — because only 103 people have Help Scout accounts at all, and
-      a GitHub link is only found where someone put one on their profile. An absent signal
-      means we could not look, not that nothing happened.</li>
+    <li><strong>Coverage is uneven between sources.</strong> Slack has seen 4,219 people,
+      GitHub 153 and Help Scout 68 — because only 103 people have Help Scout accounts
+      at all, and a GitHub link is only found where someone put one on their profile.
+      <strong>An absent signal means we could not look, not that nothing happened.</strong></li>
     <li><strong>WordCamp and meetup organising.</strong> Not yet a source. Someone running
       events every month can still read as quiet here.</li>
     <li><strong>Private channels we are not in.</strong> Activity there reads as silence.</li>
-    <li><strong>Anything off Slack and WordPress.org.</strong> GitHub, WordCamp organising,
-      Meetup.com, and real life.</li>
     <li><strong>Location, for 4,174 people.</strong> They never filled the field in. There is
       no way to recover this from their profile, only by asking.</li>
     <li><strong>Ambiguous places.</strong> A bare "Georgia" could be the country or the US

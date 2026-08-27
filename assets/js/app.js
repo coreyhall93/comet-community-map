@@ -758,207 +758,84 @@
 
   /* --- the data note ------------------------------------------------------ */
 
-  /* THE ANSWERS, IN THE TOOL.
+  /* THE ANSWERS, IN THE TOOL, WITHOUT A SECOND COPY OF THEM.
    *
-   * Every figure here is computed from the dataset the map is currently
-   * drawing, never typed. A paragraph of hand-written numbers in a doc is
-   * wrong within a week and nobody notices; this one cannot disagree with the
-   * headline above it, because both read the same array.
+   * The questions this answers get asked out loud, in the room, while the tool
+   * is on screen: why the two numbers do not add up, what "unknown" means, why
+   * only a third is on the map, how old this is. An answer a page away is not
+   * available at that moment.
    *
-   * It exists because the questions it answers get asked out loud, in the room,
-   * while the tool is on screen: why do the two numbers not add up, what is
-   * "unknown", why is only a third of it on the map, how old is this. An answer
-   * that lives one page away in the docs is not available at that moment. */
-  function dataNoteHTML() {
-    var d = state.data, m = d.meta, ppl = d.people;
-    var n = countBy(ppl, function (p) { return p.status; });
-    var total = ppl.length;
-    var quiet = ppl.filter(isQuiet).length;
-    var placed = ppl.filter(function (p) { return p.lat != null; }).length;
-    var withSignal = ppl.filter(function (p) { return p.last_signal || p.last_seen; }).length;
-    var tiers = countBy(ppl, function (p) { return p.tier; });
-    var bySource = countBy(ppl.filter(function (p) { return p.last_signal || p.last_seen; }),
-                           function (p) { return p.last_signal_source || "Slack"; });
-
-    // The reachable figure is radius-dependent, so it is stated WITH its radius
-    // rather than as a bare number someone could quote back without it.
-    var reach = 0, keys = reachKeysAll(ppl);
-    ppl.forEach(function (p) { if (keys[keyOf(p)]) reach++; });
-
-    var statusRows = STATUS.map(function (k) {
-      var inHead = (k === "dormant" || k === "inactive");
-      return "<tr" + (inHead ? ' class="is-counted"' : "") + "><td>" + k + "</td>" +
-        "<td>" + esc(m.buckets[k] || "") + "</td>" +
-        '<td class="tabular num">' + (n[k] || 0).toLocaleString() + "</td>" +
-        "<td>" + (inHead ? "<strong>yes</strong>" : "no") + "</td></tr>";
-    }).join("");
-
-    var SOURCE_ROLE = {
-      "Slack": "Posts and thread replies across every channel, not just the two community ones.",
-      "Help Scout": "Replies in the community support queue. Work that never touches Slack.",
-      "GitHub": "Issues and pull requests in the WordPress org, matched from their own profile link."
-    };
-    var FRESH_KEY = { "Slack": "slack", "Help Scout": "helpscout", "GitHub": "github" };
-    var sourceRows = ["Slack", "Help Scout", "GitHub"].map(function (k) {
-      var fresh = (m.source_freshness || {})[FRESH_KEY[k]];
-      return "<tr><td><strong>" + k + "</strong></td><td>" + esc(SOURCE_ROLE[k]) + "</td>" +
-        '<td class="tabular">' + esc(fresh || "—") + "</td>" +
-        '<td class="tabular num">' + (bySource[k] || 0).toLocaleString() + "</td></tr>";
-    }).join("");
-
-    return '<article class="note-doc">' +
-      '<header class="note-head">' +
-        "<h2>About this data</h2>" +
-        '<button type="button" class="note-close" id="close-data" aria-label="Close">Close</button>' +
-      "</header>" +
-      '<div class="note-body">' +
-
-      '<p class="note-lead">' + total.toLocaleString() + " people, " +
-        placed.toLocaleString() + " of them placed on the map, current to " +
-        esc(m.generated) + ". Everything below is counted from the file this page " +
-        "has open, so it cannot drift from the numbers on screen.</p>" +
-
-      '<section><h3>The two headline numbers are nested, not side by side</h3>' +
-      "<p>This is the first thing anyone asks. They are not meant to sum to " +
-        total.toLocaleString() + ": the second is a slice of the first.</p>" +
-      '<table class="note-table"><tbody>' +
-        '<tr><td class="fig tabular">' + quiet.toLocaleString() + "</td>" +
-          "<td><strong>gone quiet</strong><br>Nobody has seen them in over 90 days: " +
-          "dormant plus inactive. A fraction of the " + total.toLocaleString() +
-          " people in view.</td></tr>" +
-        '<tr><td class="fig tabular">' + reach.toLocaleString() + "</td>" +
-          "<td><strong>reachable now</strong><br>How many of <em>that " +
-          quiet.toLocaleString() + "</em> have an active person within " + state.radiusMi +
-          " miles. A slice of the figure above it. The radius is adjustable inside " +
-          "a person's record, so this number moves with it.</td></tr>" +
-      "</tbody></table>" +
-      "<p>The masthead shows these for whatever Place and Search you have on, " +
-        "and each carries its own denominator for the same reason.</p></section>" +
-
-      "<section><h3>The six statuses, which do sum to the total</h3>" +
-      '<table class="note-table"><thead><tr><th>Status</th><th>Means</th>' +
-        '<th class="num">People</th><th>Counted as gone quiet?</th></tr></thead>' +
-        "<tbody>" + statusRows +
-        '<tr class="is-total"><td><strong>total</strong></td><td></td>' +
-        '<td class="tabular num"><strong>' + total.toLocaleString() +
-        "</strong></td><td></td></tr></tbody></table>" +
-      "<p>These are the same thresholds Maruti's meetup dashboard uses, so both " +
-        "tools agree on what active means.</p></section>" +
-
-      '<section class="note-flag"><h3>The number to be ready for: ' +
-        (n.unknown || 0).toLocaleString() + " unknown</h3>" +
-      "<p>That is " + Math.round((n.unknown || 0) / total * 100) + "% of the dataset, " +
-        "and it is deliberately <strong>not</strong> counted as gone quiet. We have " +
-        "never seen these people active, so we cannot say they went quiet. They joined " +
-        "a channel and read without posting, or their work happens somewhere none of " +
-        "the three sources below can see. Counting them would take the headline from " +
-        quiet.toLocaleString() + " to " + (quiet + (n.unknown || 0)).toLocaleString() +
-        " on evidence we do not have. Treat it as no evidence either way, never as " +
-        "gone.</p></section>" +
-
-      "<section><h3>Where a last-seen date comes from</h3>" +
-      "<p>Status is the freshest signal from <em>any</em> of these, not from Slack " +
-        "alone. Someone silent in Slack for two years while filing pull requests every " +
-        "week reads as active, and the record says which source saw them.</p>" +
-      '<table class="note-table"><thead><tr><th>Source</th><th>What it proves</th>' +
-        '<th>Current to</th><th class="num">Freshest for</th></tr></thead><tbody>' +
-        sourceRows +
-      "</tbody></table>" +
-      "<p>" + withSignal.toLocaleString() + " people have a date from at least one " +
-        "source. The other " + (total - withSignal).toLocaleString() + " have none, and " +
-        "those are exactly the " + (n.unknown || 0).toLocaleString() + " unknown plus the " +
-        (n["new"] || 0).toLocaleString() + " new.</p></section>" +
-
-      "<section><h3>Who is counted</h3>" +
-      '<table class="note-table"><tbody>' +
-        '<tr><td class="tabular num">' + (tiers.roster || 0) + "</td><td><strong>On the " +
-          "roster</strong><br>Event Supporters, Program Supporters and Program Managers " +
-          "from the Community Team page.</td></tr>" +
-        '<tr><td class="tabular num">' + (tiers.found || 0) + "</td><td><strong>Found by " +
-          "their work</strong><br>Vetting applications or answering organizers without " +
-          "being listed anywhere. Found by what they do, not by a title.</td></tr>" +
-        '<tr><td class="tabular num">' + (tiers.community || 0).toLocaleString() +
-          "</td><td><strong>In the channels</strong><br>Everyone else in " +
-          "#community-events or #community-team.</td></tr>" +
-      "</tbody></table>" +
-      "<p>All three are always shown together. The first two carry a role badge and a " +
-        "ringed dot on the map; nothing is hidden to make a group findable. The map " +
-        "also carries " + (d.meetups || []).length.toLocaleString() + " meetup groups and " +
-        (d.automatticians || []).length.toLocaleString() +
-        " Automatticians as separate layers.</p></section>" +
-
-      "<section><h3>What it cannot see</h3><ul>" +
-        "<li><strong>" + (total - placed).toLocaleString() + " people have no dot.</strong> " +
-          "Their .org profile has no location. They are still counted and still in the " +
-          "table. Nothing is ever placed on a guess.</li>" +
-        "<li><strong>A green meetup and a green person are not the same thing.</strong> " +
-          "Meetup status uses a 365-day active window set upstream; people use 30 days. " +
-          "One meeting a quarter is a healthy group and a silent quarter is not a " +
-          "healthy person.</li>" +
-        "<li><strong>Automatticians cannot be filtered by Place.</strong> " +
-          "automattic.com/map publishes coordinates and no country, and this tool does " +
-          "not infer one.</li>" +
-        "<li><strong>Work outside these three sources is invisible.</strong> Forums, " +
-          "translation, WordCamp organising and mentoring do not reach any of them, so " +
-          "somebody genuinely busy can read as quiet.</li>" +
-      "</ul></section>" +
-
-      "<section><h3>The fine print, straight from the build</h3>" +
-        "<ul>" + (m.caveats || []).map(function (c) {
-          return "<li>" + esc(c) + "</li>";
-        }).join("") + "</ul>" +
-      "<p>Sources, in the build's own words:</p><ul>" +
-        (m.sources || []).map(function (c) { return "<li>" + esc(c) + "</li>"; }).join("") +
-      "</ul></section>" +
-
-      "</div></article>";
-  }
-
-  function countBy(rows, f) {
-    var out = {};
-    for (var i = 0; i < rows.length; i++) {
-      var k = f(rows[i]);
-      out[k] = (out[k] || 0) + 1;
-    }
-    return out;
-  }
-
-  /* Reachability across the WHOLE dataset rather than the current view, because
-   * the note describes the data and not the filter. Its own cache: reusing the
-   * per-render one would poison the headline the moment the note was opened. */
-  var _reachAll = { radius: -1, keys: null };
-  function reachKeysAll(ppl) {
-    if (_reachAll.radius === state.radiusMi && _reachAll.keys) return _reachAll.keys;
-    var quiet = ppl.filter(isQuiet);
-    var idx = reachIndex(quiet, ppl);
-    var keys = {};
-    for (var i = 0; i < quiet.length; i++) {
-      var k = keyOf(quiet[i]);
-      if (idx[k]) keys[k] = true;
-    }
-    _reachAll = { radius: state.radiusMi, keys: keys };
-    return keys;
-  }
+   * So the words live in ONE place -- <section id="data-note"> in about.html --
+   * and this fetches that section and shows it in a sheet. Two surfaces, one
+   * source. It was briefly built here from the loaded dataset instead, which
+   * was live but meant the same paragraphs existed twice and would eventually
+   * disagree. The build already checks every figure in about.html against
+   * data/people.json and names the stale one, which is the guarantee that
+   * mattered.
+   */
+  var _noteHTML = null;
 
   function openDataNote() {
     var dlg = $("datanote");
-    if (!dlg || !state.data) return;
-    dlg.innerHTML = dataNoteHTML();
+    if (!dlg) return;
+    dlg.innerHTML = noteFrame('<p class="note-lead">Loading the data notes…</p>');
+    wireNote(dlg);
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+
+    if (_noteHTML !== null) return paintNote(dlg, _noteHTML);
+
+    fetch("about.html", { credentials: "same-origin" })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.text();
+      })
+      .then(function (html) {
+        // Parsed, never regex-scraped: the section is real markup and a
+        // template element keeps its images and scripts from loading.
+        var doc = new DOMParser().parseFromString(html, "text/html");
+        var sec = doc.getElementById("data-note");
+        if (!sec) throw new Error("about.html has no #data-note section");
+        _noteHTML = sec.innerHTML;
+        paintNote(dlg, _noteHTML);
+      })
+      .catch(function (e) {
+        // Opened from file://, or the page is missing. Say which, and give the
+        // link rather than a dead end.
+        paintNote(dlg,
+          '<p class="note-lead">The data notes could not be loaded (' +
+          esc(e && e.message ? e.message : String(e)) + ').</p>' +
+          '<p>They live on the <a href="about.html">Docs page</a>, under ' +
+          '“The data, and every number in it”.</p>');
+      });
+  }
+
+  function noteFrame(body) {
+    return '<article class="note-doc">' +
+      '<header class="note-head"><h2>The data</h2>' +
+        '<a class="note-link" href="about.html">Open in Docs</a>' +
+        '<button type="button" class="note-close" id="close-data" aria-label="Close">' +
+        "Close</button></header>" +
+      '<div class="note-body">' + body + "</div></article>";
+  }
+
+  function paintNote(dlg, body) {
+    dlg.querySelector(".note-body").innerHTML = body;
     // Wide content scrolls inside its own box, never by pushing the sheet
-    // sideways: at 375px the four-column tables were 457px and took the whole
-    // note with them. Done here rather than in the markup so every table gets
-    // it, including any added later.
-    Array.prototype.forEach.call(dlg.querySelectorAll(".note-table"), function (t) {
+    // sideways: at 375px the four-column tables are 457px and would take the
+    // whole note with them.
+    Array.prototype.forEach.call(dlg.querySelectorAll(".note-body table"), function (t) {
+      if (t.parentNode.classList.contains("tscroll")) return;
       var box = document.createElement("div");
       box.className = "tscroll";
       t.parentNode.insertBefore(box, t);
       box.appendChild(t);
     });
-    $("close-data").onclick = function () { dlg.close(); };
-    // showModal gives focus trapping and Escape for free; the fallback keeps
-    // the note reachable on anything that does not have it.
-    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
     dlg.querySelector(".note-body").scrollTop = 0;
+  }
+
+  function wireNote(dlg) {
+    var x = $("close-data");
+    if (x) x.onclick = function () { dlg.close(); };
   }
 
   /* --- map --------------------------------------------------------------- */

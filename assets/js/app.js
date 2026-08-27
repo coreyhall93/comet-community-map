@@ -1,4 +1,10 @@
-/* Community Map dashboard.
+/* Community Reach.
+ *
+ * Deliberately not "dashboard". A dashboard is read; this is worked -- open a
+ * ranked list, pick someone, see who is near them, mark them, move on. The word
+ * also already belongs to the WordPress Community Events Dashboard, which
+ * covers the same community for a different question, and two tools called the
+ * dashboard in one team get confused every time either is mentioned.
  *
  * The product question is "who has gone quiet, and who is near them", so the
  * side panel always answers both halves at once: the quiet people in view, and
@@ -2888,7 +2894,7 @@
     // shared view. After state.data is set, because it resolves the selected
     // person against visible().
     var fromLink = applyStateFromHash();
-    document.title = "Community Map — " + data.meta.counts.total.toLocaleString() + " people";
+    document.title = "Community Reach — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
     syncExpandButton();
     if ($("open-data")) $("open-data").onclick = openDataNote;

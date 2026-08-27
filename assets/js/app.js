@@ -520,11 +520,26 @@
     });
   }
 
-  /* The neighbour pool for every proximity question on screen. Held on state
-   * for the duration of one render so placedIn()'s identity cache still hits
+  /* The population, for anything that COUNTS: place, state and search. Held on
+   * state for the duration of one render so placedIn()'s identity cache hits
    * and the array is built once, not once per caller. */
   function pool() {
     return state.pool || (state.data ? state.data.people : []);
+  }
+
+  /* WHO LIVES NEAR SOMEONE IS A FACT ABOUT THE WORLD, NOT ABOUT YOUR FILTERS.
+   *
+   * Every proximity question used to be asked against pool(), which includes
+   * the SEARCH box. So searching a name and opening that person asked "who is
+   * active near her, among the people whose details match her name" -- which is
+   * nobody, and the record duly said "Nobody active within 100 mi". Velda has
+   * three. The tool was not wrong about the distance, it was answering a
+   * question no one asked.
+   *
+   * Proximity now always reads the whole dataset. A filter changes which people
+   * you are LOOKING at; it cannot change who lives near them. */
+  function neighbours() {
+    return state.data ? state.data.people : [];
   }
 
   /* Who has gone quiet, and which of them have an active person in range.
@@ -544,7 +559,10 @@
     var within = pool();
     if (_reach.pool === within && _reach.radius === state.radiusMi) return;
     var quiet = within.filter(isQuiet);
-    var idx = reachIndex(quiet, within);
+    // Measured against everyone, not against the filtered view: a US view that
+    // counted only US actives called four people unreachable who have someone
+    // active just over a border.
+    var idx = reachIndex(quiet, neighbours());
     var keys = {};
     for (var i = 0; i < quiet.length; i++) {
       var k = keyOf(quiet[i]);
@@ -760,6 +778,88 @@
       '<span class="n tabular">' + v.toLocaleString() +
         '<span class="of"> ' + esc(of) + "</span></span>" +
       '<span class="k">' + k + "</span></button>";
+  }
+
+  /* --- role definitions, floating free ------------------------------------ */
+
+  /* THE TOOLTIP LIVES ON <body>, NOT INSIDE THE THING IT DESCRIBES.
+   *
+   * It was a ::after on the label, so it was laid out inside .rail -- a scroll
+   * container with overflow-y: auto. An absolutely positioned child cannot
+   * escape an ancestor's overflow no matter what z-index it carries, so the
+   * definition was clipped at the rail's edge and cut in half.
+   *
+   * One element, appended to <body>, positioned with viewport coordinates. It
+   * has no containing block to be trapped by, so it floats over the rail, over
+   * the map, over anything. Position is computed per show rather than per
+   * element, which is also what lets it flip up near the bottom of the window
+   * and pull itself back inside the right edge instead of hanging off it. */
+  var _tip = null;
+
+  function defTip() {
+    if (!_tip) {
+      _tip = document.createElement("div");
+      _tip.className = "deftip";
+      _tip.setAttribute("role", "tooltip");
+      document.body.appendChild(_tip);
+    }
+    return _tip;
+  }
+
+  function showDefTip(el) {
+    var text = el.getAttribute("data-def");
+    if (!text) return;
+    var r = el.getBoundingClientRect();
+    // A hidden anchor measures 0x0 and would park the tip in the top-left
+    // corner pointing at nothing. The rail is display:none while a record is
+    // open, and its rows keep their data-def attributes.
+    if (!r.width && !r.height) { hideDefTip(); return; }
+
+    var t = defTip();
+    t.textContent = text;
+    t.classList.add("on");
+    // Measured after the text is in, or the first show of a long definition is
+    // positioned against the width of the previous one.
+    var w = t.offsetWidth, h = t.offsetHeight, gap = 8, edge = 10;
+    // documentElement first: window.innerWidth reports 0 inside some embedded
+    // browser panes, and a zero viewport turns every clamp below into nonsense.
+    var vw = document.documentElement.clientWidth || window.innerWidth || 0;
+    var vh = document.documentElement.clientHeight || window.innerHeight || 0;
+
+    var top = r.bottom + gap;
+    if (vh && top + h > vh - edge) top = Math.max(edge, r.top - h - gap);
+
+    // Clamp the LOW bound last. Clamping high-then-low lets the right-edge
+    // limit win on a narrow window and push the tip off the left of the screen,
+    // which is the same class of bug as the clipping this replaced.
+    var left = r.left;
+    if (vw) left = Math.min(left, vw - w - edge);
+    left = Math.max(edge, left);
+
+    t.style.top = Math.round(top) + "px";
+    t.style.left = Math.round(left) + "px";
+  }
+
+  function hideDefTip() { if (_tip) _tip.classList.remove("on"); }
+
+  /* Delegated, because the rows carrying these are rebuilt on every render and
+   * per-element listeners would have to be rewired each time -- which is the
+   * kind of thing that works until the day someone adds a render path. */
+  function wireDefTips() {
+    document.addEventListener("mouseover", function (e) {
+      var el = e.target && e.target.closest && e.target.closest("[data-def]");
+      if (el) showDefTip(el); else hideDefTip();
+    });
+    document.addEventListener("focusin", function (e) {
+      var el = e.target && e.target.closest && e.target.closest("[data-def]");
+      if (el) showDefTip(el); else hideDefTip();
+    });
+    document.addEventListener("focusout", hideDefTip);
+    // Anchored to a viewport coordinate, so anything that moves the anchor has
+    // to dismiss it rather than leave it pointing at empty space. Capture
+    // phase: the rail and the note body scroll, not the document.
+    document.addEventListener("scroll", hideDefTip, true);
+    window.addEventListener("resize", hideDefTip);
   }
 
   /* --- the data note ------------------------------------------------------ */
@@ -1094,6 +1194,49 @@
    */
   var MEETUP_CLASS = { "Active": "m-active", "Dormant": "m-dormant", "Not started": "m-never" };
 
+  /* ONE WORD, ONE MEANING, ACROSS BOTH LAYERS.
+   *
+   * The upstream events dashboard calls a meetup "Active" if it met within 365
+   * days. This tool calls a PERSON active if a source saw them within 30. So
+   * 130 groups were drawn green and labelled Active while a person with the
+   * identical gap was drawn red and labelled Dormant -- on the same map, at the
+   * same time. Nobody can hold two definitions of "active" in their head while
+   * reading one screen.
+   *
+   * The windows are NOT changed: they belong to the events dashboard, and
+   * diverging would mean two tools reporting different numbers for the same 708
+   * groups. Only the words change, and only where they are shown. The raw value
+   * stays the facet key, so shared links and the upstream data are untouched. */
+  var MEETUP_LABEL = { "Active": "Meeting", "Dormant": "Stopped", "Not started": "Never met" };
+  function meetupLabel(v) { return MEETUP_LABEL[v] || v; }
+
+  /* A dot should say who it is before you commit a click to it.
+   *
+   * Scanning a map of 2,858 dots told you nothing without poking at each one,
+   * so the map was a picture of density rather than of people. Hover now opens
+   * the card; click still selects.
+   *
+   * autoPan:false is the load-bearing option. Leaflet pans the map to fit a
+   * popup by default -- the same behaviour that made the map drag itself back
+   * to a selection on every moveend. On hover it would be far worse: the map
+   * would lurch every time the pointer crossed a dot near an edge, moving the
+   * dot you were aiming at. */
+  var POPUP_OPTS = { autoPan: false, closeButton: false, autoClose: false,
+                     closeOnClick: false };
+
+  function hoverPeek(m) {
+    m.on("mouseover", function () { if (!m.isPopupOpen()) m.openPopup(); });
+    m.on("mouseout", function () {
+      // The selected person's card is not a peek: it was opened deliberately
+      // and closing it on mouseout would make the selection flicker.
+      var sel = state.selected && state.markers[keyOf(state.selected)];
+      var mt = state.selectedMeetup &&
+               state.markers[overlayById("meetups").key(state.selectedMeetup)];
+      if (m === sel || m === mt) return;
+      m.closePopup();
+    });
+  }
+
   var OVERLAYS = [
     {
       id: "meetups",
@@ -1105,11 +1248,14 @@
       key: function (m) { return "meetup:" + m.group; },
       name: function (m) { return m.group; },
       cls: function (m) { return MEETUP_CLASS[m.status] || "m-never"; },
-      statusLabel: function (m) { return m.status; },
+      statusLabel: function (m) { return meetupLabel(m.status); },
       // What this layer can be narrowed by. A layer that returns nothing here
       // simply gets no filter chips, which is why Automatticians need no
       // special case anywhere.
       facet: function (m) { return m.status; },
+      // Shown on the chips and in the list; facet() above stays the raw value
+      // so a shared link keeps working and the upstream vocabulary is intact.
+      facetLabel: meetupLabel,
       /* Meetups carry a country, so Place applies to them: "the US, and active
        * meetups" has to mean US meetups. The upstream file spells three of them
        * differently from the people file, which would silently drop 147 US
@@ -1134,7 +1280,8 @@
         return "<strong>" + esc(m.group) + "</strong><br>" +
           esc(m.city || "") + (m.country ? ", " + esc(m.country) : "") + "<br>" +
           m.members.toLocaleString() + " members · " + m.pastEvents + " past events<br>" +
-          '<span class="tag ' + (MEETUP_CLASS[m.status] || "m-never") + '">' + esc(m.status) + "</span>" +
+          '<span class="tag ' + (MEETUP_CLASS[m.status] || "m-never") + '">' +
+            esc(meetupLabel(m.status)) + "</span>" +
           (m.lastEvent ? '<br><span class="popup-def">last event ' + esc(m.lastEvent) + "</span>"
                        : '<br><span class="popup-def">no events on record</span>') +
           (m.url ? '<br><a href="' + esc(m.url) + '" target="_blank" rel="noreferrer noopener">meetup.com</a>' : "");
@@ -1241,7 +1388,8 @@
         title: def.name(r),
         rStatus: def.statusLabel(r)
       });
-      m.bindPopup(function () { return def.popup(r); });
+      m.bindPopup(function () { return def.popup(r); }, POPUP_OPTS);
+      hoverPeek(m);
       if (def.select) m.on("click", function () { def.select(r); });
       state.markers[def.key(r)] = m;
       batch.push(m);
@@ -1269,7 +1417,7 @@
    * chip beside it. That is what makes them readable as "what is out there"
    * rather than "what is left".
    */
-  function chipRowHTML(id, label, values, counts, set, clsFor) {
+  function chipRowHTML(id, label, values, counts, set, clsFor, labelFor) {
     var total = 0;
     values.forEach(function (v) { total += counts[v] || 0; });
     var any = facetAny(set);
@@ -1281,7 +1429,8 @@
         var on = facetOn(set, v);
         return '<button class="chip ' + esc(clsFor ? clsFor(v) : v) + (on ? " on" : "") +
           '" data-v="' + esc(v) + '" aria-pressed="' + on + '">' +
-          esc(v) + " " + (counts[v] || 0).toLocaleString() + "</button>";
+          esc(labelFor ? labelFor(v) : v) + " " +
+          (counts[v] || 0).toLocaleString() + "</button>";
       }).join("") + "</div>";
   }
 
@@ -1328,7 +1477,7 @@
       if (vals.length < 2) return;              // nothing to choose between
       html += chipRowHTML(def.id, def.label, vals, counts,
         state.overlayFilter[def.id] || (state.overlayFilter[def.id] = {}),
-        function (v) { return MEETUP_CLASS[v] || ""; });
+        function (v) { return MEETUP_CLASS[v] || ""; }, def.facetLabel);
     });
     host.innerHTML = html;
     wireChips(host, function (v, id) {
@@ -1626,7 +1775,8 @@
           "<br>" + esc(p.city || p.country || "") +
           (p.precision === "country" ? " <em>(country only)</em>" : "") +
           '<br><span class="tag ' + p.status + '">' + p.status + "</span>";
-      });
+      }, POPUP_OPTS);
+      hoverPeek(m);
       batch.push(m);
     });
     // addLayers() builds the cluster tree once for the whole batch. Adding one
@@ -1901,7 +2051,7 @@
 
   function personRowHTML(p) {
     var reach;
-    var near = nearestActive(p, pool(), 1)[0] || null;
+    var near = nearestActive(p, neighbours(), 1)[0] || null;
     if (near) {
       reach = '<div class="meta">Nearest active: <strong>' + esc(near.p.name) +
               "</strong> · " + km(near.d) + "</div>";
@@ -1910,7 +2060,7 @@
     } else {
       // Say how far the nearest one actually is, so the radius can be widened
       // deliberately rather than guessed at.
-      var far = nearestAnywhere(p, pool());
+      var far = nearestAnywhere(p, neighbours());
       reach = '<div class="meta subtle">Nobody active within ' + state.radiusMi + " mi" +
               (far ? " · closest is " + esc(far.p.name) + " at " + km(far.d) : "") + "</div>";
     }
@@ -2165,7 +2315,7 @@
     var start = state.page * per;
     var rows = all.slice(start, start + per);
     // Only the page on screen, so paging stays instant on 7,032 rows.
-    var reach = reachIndex(rows, pool());
+    var reach = reachIndex(rows, neighbours());
 
     $("do-csv").textContent = "Export " + all.length.toLocaleString() + " rows";
     if (!all.length) {
@@ -2325,21 +2475,22 @@
       state.map.flyTo([mt.lat, mt.lng], Math.max(state.map.getZoom(), FOCUS_ZOOM), { duration: 0.6 });
     }
     markMarker(overlayById("meetups").key(mt), "is-picked", true);
-    nearbyPeople({ lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "" }, pool())
+    nearbyPeople({ lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "" }, neighbours())
       .forEach(function (h) { markMarker(keyOf(h.p), "is-near", true); });
   }
 
   function meetupDetailHTML(mt, list) {
     var here = { lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "\u0000" };
-    var near = nearbyPeople(here, pool(), state.nearStatus);
-    var tally = nearbyTally(here, pool());
+    var near = nearbyPeople(here, neighbours(), state.nearStatus);
+    var tally = nearbyTally(here, neighbours());
     var cls = MEETUP_CLASS[mt.status] || "m-never";
+    var mtLabel = meetupLabel(mt.status);
 
     var head = '<div class="detail">' +
       '<button class="backlink" id="do-back">Clear</button>' +
       "<h2>" + esc(mt.group) + "</h2>" +
       '<p class="meta">Meetup group' + (mt.region ? " · " + esc(mt.region) : "") + "</p>" +
-      '<p style="margin-top:var(--s-2)"><span class="tag ' + cls + '">' + esc(mt.status) + "</span></p>" +
+      '<p style="margin-top:var(--s-2)"><span class="tag ' + cls + '">' + esc(mtLabel) + "</span></p>" +
       "<dl>" +
         "<dt>Where</dt><dd>" + esc(mt.city || "") +
           (mt.country ? ", " + esc(mt.country) : "") + "</dd>" +
@@ -2350,7 +2501,8 @@
           ? "<dt>Organisers</dt><dd>" + mt.leaders.map(esc).join(", ") + "</dd>" : "") +
         (mt.url ? "<dt>Meetup</dt><dd>" + link(mt.url, "meetup.com") + "</dd>" : "") +
       "</dl>" +
-      '<p class="hint">Status uses a 365-day window, set by the events dashboard ' +
+      '<p class="hint">Meeting means an event within 365 days, a window set by the ' +
+      'events dashboard ' +
       "this comes from. It is a wider window than the one used for people.</p>" +
       '<div class="btnrow" style="margin-bottom:var(--s-3)">' + setAddButtonHTML("meetup", mt) + "</div>";
 
@@ -2387,12 +2539,12 @@
         '<div class="state">This person has no location on record, so proximity ' +
         "cannot be worked out. Correcting their location puts them on the map.</div>";
     }
-    var tally = nearbyTally(p, pool());
-    var rows = nearbyPeople(p, pool(), state.nearStatus).slice(0, 12);
+    var tally = nearbyTally(p, neighbours());
+    var rows = nearbyPeople(p, neighbours(), state.nearStatus).slice(0, 12);
     var head = '<p class="label">Who is nearby</p>' + radiusSliderHTML() + nearFilterHTML(tally);
 
     if (!Object.keys(tally).length) {
-      var far = nearestAnywhere(p, pool());
+      var far = nearestAnywhere(p, neighbours());
       // Layer blocks still render: "no community members nearby, but three
       // dormant meetups and an Automattician are" is a complete answer, and the
       // old early return threw it away.
@@ -2473,15 +2625,22 @@
     markMarker(key, "is-picked", true);
 
     var here = sel ? sel : { lat: mt.lat, lng: mt.lng, org: "", slack: "", name: "\u0000" };
-    nearbyPeople(here, visible()).forEach(function (h) {
+    nearbyPeople(here, neighbours()).forEach(function (h) {
       markMarker(keyOf(h.p), "is-near", true);
     });
-
-    var m = state.markers[key];
-    if (m && m.getElement && m.getElement() && m.openPopup && !m.isPopupOpen()) {
-      m.openPopup();
-    }
   }
+
+  /* Deliberately no openPopup() here.
+   *
+   * This runs on every zoomend and moveend, to re-apply the highlight classes
+   * after clustering rebuilds the markers. It used to re-open the selected
+   * popup too, and Leaflet's openPopup autoPans by default -- so panning away
+   * from the person you had open fired moveend, which re-opened the popup,
+   * which panned the map straight back to them. The map fought you for the
+   * viewport every time you tried to look at anything else.
+   *
+   * Opening a popup is a thing the reader did once, in select(). Re-asserting
+   * it on every map movement is not repainting, it is overriding. */
 
   function markMarker(key, cls, on) {
     var m = state.markers[key];
@@ -2759,7 +2918,7 @@
 
   function exportCSV() {
     var list = visible();
-    var reach = reachIndex(list, pool());
+    var reach = reachIndex(list, neighbours());
     var cols = ["#"].concat(COLS.map(function (c) { return c[1]; }));
     var lines = [cols.map(q).join(",")];
     list.forEach(function (p, i) {
@@ -2897,6 +3056,7 @@
     document.title = "Community Reach — " + data.meta.counts.total.toLocaleString() + " people";
     toggle("v-map", "v-table", "view", "map", "table");
     syncExpandButton();
+    wireDefTips();
 
     // Place list, most-populated first, so the useful ones are at the top.
     // Each count is produced by the same predicate that filters on it, so the
@@ -3040,19 +3200,40 @@
    * that element is already gone, so a gate that writes into it writes into
    * nothing -- and only on the encrypted host, because local dev resolves
    * data/people.json and never comes through here at all. */
+  /* THE GATE OWNS ITS OWN ELEMENT, ON <body>, WHERE NOTHING CAN HIDE IT.
+   *
+   * It used to render into #record. #record is one half of the queue/record
+   * swap, and the CSS hides it until #stage carries .has-record -- which only
+   * happens once something is selected. So on a fresh load the passphrase form
+   * was written into a pane with display:none: correct markup, correct
+   * handlers, zero pixels. Anyone arriving without a passphrase already in
+   * sessionStorage saw an empty page with nothing to type into.
+   *
+   * It survived every automated check because querySelector finds hidden
+   * elements and setting .value on one works. The unlock test was driving a
+   * form no human could see. Any check on this element must assert
+   * getBoundingClientRect().width > 0, not merely that it exists.
+   *
+   * A gate blocks the whole app; it is not a panel inside one column of it. */
   function gate(msg) {
-    var pane = $("record");
-    if (!pane) return;
-    var host = $("side-state");
+    var host = $("cm-gate");
     if (!host) {
-      pane.innerHTML = '<div class="state" id="side-state"></div>';
-      host = $("side-state");
+      host = document.createElement("div");
+      host.id = "cm-gate";
+      host.className = "gate";
+      document.body.appendChild(host);
     }
     host.innerHTML =
-      "<strong>" + esc(msg || "Team passphrase") + "</strong>" +
-      '<div class="editor" style="margin-top:var(--s-2)">' +
-      '<input id="pw" class="field" type="password" placeholder="Passphrase" autocomplete="current-password">' +
-      '<button class="btn primary" id="pw-go">Open</button></div>';
+      '<div class="gate-card" role="dialog" aria-modal="true" aria-label="Team passphrase">' +
+        "<h2>" + esc(msg || "Team passphrase") + "</h2>" +
+        "<p>This tool names individual people. It is private to the Community Team, " +
+        "and the file on the server stays encrypted until you unlock it.</p>" +
+        '<div class="gate-row">' +
+          '<input id="pw" class="field" type="password" placeholder="Passphrase" ' +
+            'autocomplete="current-password">' +
+          '<button class="btn primary" id="pw-go">Open</button>' +
+        "</div>" +
+      "</div>";
     function go() {
       unlock($("pw").value).catch(function (err) {
         // Only the HMAC check proves the passphrase is wrong. Everything else --
@@ -3065,6 +3246,13 @@
     $("pw-go").onclick = go;
     $("pw").onkeydown = function (e) { if (e.key === "Enter") go(); };
     $("pw").focus();
+  }
+
+  /* Removed rather than hidden: leaving a fixed, full-viewport overlay in the
+   * document after unlock would sit invisibly over the map and swallow clicks. */
+  function closeGate() {
+    var g = $("cm-gate");
+    if (g && g.parentNode) g.parentNode.removeChild(g);
   }
 
   function unlock(pass) {
@@ -3161,6 +3349,7 @@
                        "people. It needs rebuilding — tell Corey.");
           }
           sessionStorage.setItem("cm-pass", pass);
+          closeGate();
           // boot() runs inside this promise chain, so anything it throws used
           // to surface as "wrong passphrase" -- the one message guaranteed to
           // be false, since the data had already decrypted. The passphrase is

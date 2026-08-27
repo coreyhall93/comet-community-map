@@ -380,9 +380,15 @@
   <ul>
     <li><strong>4,174 people have no dot.</strong> Their .org profile has no location. They
       are still counted and still in the table. Nothing is ever placed on a guess.</li>
-    <li><strong>A green meetup and a green person are not the same thing.</strong> Meetup
-      status uses a 365-day active window set upstream; people use 30 days. One meeting a
-      quarter is a healthy group and a silent quarter is not a healthy person.</li>
+    <li><strong>A meetup's window is much wider than a person's.</strong> A group counts
+      as <em>Meeting</em> if it met within 365 days; a person counts as <em>active</em> if
+      a source saw them within 30. That is correct — one meeting a quarter is a healthy
+      group and a silent quarter is not a healthy person — but it used to mean 130 groups
+      were labelled “Active” green while a person with the identical gap was labelled
+      “Dormant” red, on the same map. The windows are unchanged, because they belong to
+      the events dashboard and both tools must report the same numbers. The
+      <strong>words</strong> changed instead: meetups are Meeting, Stopped or Never met, so
+      no word means two things on one screen.</li>
     <li><strong>Automatticians cannot be filtered by Place.</strong> automattic.com/map
       publishes coordinates and no country, and this tool does not infer one.</li>
     <li><strong>Work outside these three sources is invisible.</strong> Forums, translation,

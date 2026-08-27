@@ -652,22 +652,28 @@ td a:hover, .detail a:hover { border-bottom-color: currentColor; }
    the 2026-08-05 call, which is why these exist. */
 .def { border-bottom: 1px dotted var(--faint); cursor: help; position: relative; }
 .def:hover, .def:focus { outline: none; }
-.def::after {
-  content: attr(data-def);
-  position: absolute; left: 0; top: calc(100% + 6px); z-index: 1000;
-  width: 17rem; padding: var(--s-2) var(--s-3);
+/* The definition itself is a single element on <body>, positioned in viewport
+   coordinates by showDefTip(). It was a ::after on the label, which put it
+   inside .rail -- a scroll container -- where it clipped at the edge and got
+   cut in half. Nothing absolutely positioned escapes an ancestor's overflow,
+   whatever its z-index, so it had to leave the sidebar entirely. Above the map
+   too, which is the other half of what that buys. */
+.deftip {
+  position: fixed; top: 0; left: 0; z-index: 4000;
+  max-width: min(20rem, calc(100vw - 20px));
+  padding: var(--s-2) var(--s-3);
   background: var(--ink); color: var(--ground);
   border-radius: 8px; font-size: var(--t-small); line-height: 1.4;
   text-transform: none; letter-spacing: 0; font-weight: 400;
+  box-shadow: 0 6px 20px rgba(16, 24, 40, .28);
   opacity: 0; visibility: hidden; transform: translateY(-3px);
   transition: opacity var(--m-fast-out), transform var(--m-fast-out), visibility var(--m-fast-out);
   pointer-events: none;
 }
-.def:hover::after, .def:focus::after {
-  opacity: 1; visibility: visible; transform: translateY(0);
+.deftip.on {
+  opacity: 1; visibility: visible; transform: none;
   transition: opacity var(--m-mod-in), transform var(--m-mod-in), visibility var(--m-mod-in);
 }
-td .def::after { width: 15rem; }
 
 
 .about-link { color: var(--accent); text-decoration: none; margin-left: var(--s-2);
@@ -1051,3 +1057,41 @@ button.about-link {
    and at 375px these are 457px wide. */
 .tscroll { overflow-x: auto; margin: 0 0 var(--s-3); -webkit-overflow-scrolling: touch; }
 .tscroll .note-table { margin-bottom: 0; min-width: 26rem; }
+
+/* ---------------------------------------------------------------------------
+   The passphrase gate.
+
+   Its own element on <body>, deliberately. It used to render inside #record,
+   which is one half of the queue/record swap and is display:none until
+   something is selected -- so on a fresh load the form was written into a
+   hidden pane. Correct markup, correct handlers, zero pixels. Anyone without a
+   passphrase already in sessionStorage saw an empty page.
+
+   Fixed positioning and its own stacking context, so no layout rule anywhere
+   else in this stylesheet can hide it again.
+   --------------------------------------------------------------------------- */
+.gate {
+  position: fixed; inset: 0; z-index: 5000;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: max(12vh, var(--s-6)) var(--s-5) var(--s-5);
+  background: color-mix(in srgb, var(--ground) 92%, transparent);
+  backdrop-filter: blur(3px);
+}
+.gate-card {
+  width: min(28rem, 100%);
+  background: var(--panel);
+  border-radius: 14px;
+  padding: var(--s-5) var(--s-5) var(--s-4);
+  box-shadow: 0 18px 48px rgba(16, 24, 40, .24), 0 2px 6px rgba(16, 24, 40, .10);
+}
+.gate-card h2 {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-h3); font-weight: 640; letter-spacing: -0.01em; color: var(--ink);
+}
+.gate-card p {
+  margin: 0 0 var(--s-4);
+  font-size: var(--t-small); line-height: 1.55; color: var(--slate);
+}
+.gate-row { display: flex; gap: var(--s-2); align-items: center; }
+.gate-row .field { flex: 1 1 auto; min-width: 0; }
+.gate-row .btn { flex: none; }

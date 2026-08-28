@@ -535,13 +535,21 @@ td { padding: var(--s-2) var(--s-3) var(--s-2) 0; border-bottom: 1px solid var(-
    of quietly growing by 3px. Every layer must still set its own width/height --
    meetups and Automatticians once did not, which rendered them 0x0 and
    invisible while their clusters looked fine. */
-.pin { border: 0; cursor: pointer;
+/* A SHAPE'S ROTATION IS PART OF THE SHAPE, SO IT LIVES IN A VARIABLE.
+   Hover set `transform: scale(1.45)`, which is one property, so it REPLACED the
+   diamond's rotate(45deg) instead of adding to it. Hovering an Automattician
+   therefore un-rotated the marker to a square while the counter-rotated face
+   inside it swung to -45 degrees: the photo tilted on hover. Carrying the
+   rotation in a custom property means every transform rule composes with it and
+   no rule has to remember the others. */
+.pin { border: 0; cursor: pointer; --shape-rot: 0deg;
+       transform: rotate(var(--shape-rot));
        box-shadow: 0 0 0 1.5px rgba(255,255,255,.95),
                    0 0 0 3px rgba(16,24,40,.55),
                    0 1px 3px rgba(0,0,0,.35);
        transition: transform var(--m-fast-out), box-shadow var(--m-fast-out); }
-.leaflet-marker-icon:hover .pin { transform: scale(1.45); transition: transform var(--m-fast-in); }
-.leaflet-marker-icon:hover .pin.new { transform: scale(1.45) rotate(45deg); }
+.leaflet-marker-icon:hover .pin { transform: rotate(var(--shape-rot)) scale(1.45);
+                                  transition: transform var(--m-fast-in); }
 /* Shape means LAYER, colour means STATUS. Nothing else.
    This used to be muddled: "new" people were rotated squares (diamonds) and
    "slowing" people were squares, which is exactly what the Automattician and
@@ -705,9 +713,16 @@ td a:hover, .detail a:hover { border-bottom-color: currentColor; }
   width: 100%; height: 100%; display: block; border-radius: inherit;
   object-fit: cover; background: var(--tint);
 }
-/* Diamond layer rotates the container, so the face is counter-rotated back to
-   upright -- otherwise every Automattician sits at 45 degrees. */
-.pin.has-avatar > img.counter-rot { transform: rotate(-45deg) scale(0.78); }
+/* THE FACE FILLS THE DIAMOND. IT IS NOT A SQUARE PARKED INSIDE ONE.
+   The container is a square rotated 45 degrees, so an upright photo has to be
+   counter-rotated to read as a face and then scaled by sqrt(2) to cover the
+   rotated box corner to corner, with the container clipping the overhang. The
+   old rule scaled DOWN to 0.78, which is why an Automattician read as a small
+   square photo floating in a diamond outline rather than a diamond portrait.
+   overflow:hidden clips descendants only: the status ring is a box-shadow drawn
+   outside the border box and is untouched by it. */
+.pin.has-avatar.diamond { overflow: hidden; }
+.pin.has-avatar.diamond > img { transform: rotate(-45deg) scale(1.4143); }
 
 /* Status ring on an avatar. Thicker than the plain-dot ring because it is
    competing with a photograph rather than a flat fill. */
@@ -726,7 +741,7 @@ td a:hover, .detail a:hover { border-bottom-color: currentColor; }
    decided -- status rules must never touch border-radius or transform again. */
 .pin.circle  { border-radius: 50%; }
 .pin.square  { border-radius: 2px; }
-.pin.diamond { border-radius: 2px; transform: rotate(45deg); }
+.pin.diamond { border-radius: 2px; --shape-rot: 45deg; }
 .cluster.circle  { border-radius: 50%; }
 .cluster.square  { border-radius: 5px; }
 .cluster.diamond { border-radius: 4px; transform: rotate(45deg); }

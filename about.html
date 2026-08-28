@@ -250,7 +250,7 @@
   its own chips and its own section in the list.</p>
   <p>Automatticians are the one exception to Place: automattic.com/map publishes
   coordinates and no country, so they cannot be filtered by it without inventing one. The
-  section says so rather than quietly showing the wrong 1,346 people.</p>
+  section says so rather than quietly showing the wrong 1,332 people.</p>
   <p>The key is on the map itself, behind the button under the zoom controls.</p>
 
   <h3>Sending someone a view</h3>
@@ -280,7 +280,7 @@
        data/people.json on each build; build_data.py prints which one has gone
        stale rather than silently letting it rot. -->
   <section id="data-note">
-  <p class="lead-sm"><strong>7,032 people, 2,858 of them placed on the map, current to
+  <p class="lead-sm"><strong>7,032 people, 2,883 of them placed on the map, current to
   2026-08-26.</strong> This section is the answer to the questions that get asked out loud
   while the tool is on screen.</p>
 
@@ -374,11 +374,11 @@
   </table>
   <p>All three are always shown together. The first two carry a role badge and a ringed dot
   on the map; nothing is hidden to make a group findable. The map also carries 708 meetup
-  groups and 1,346 Automatticians as separate layers.</p>
+  groups and 1,332 Automatticians as separate layers.</p>
 
   <h3>What it cannot see</h3>
   <ul>
-    <li><strong>4,174 people have no dot.</strong> Their .org profile has no location. They
+    <li><strong>4,149 people have no dot.</strong> Their .org profile has no location. They
       are still counted and still in the table. Nothing is ever placed on a guess.</li>
     <li><strong>A meetup's window is much wider than a person's.</strong> A group counts
       as <em>Meeting</em> if it met within 365 days; a person counts as <em>active</em> if
@@ -437,7 +437,7 @@
       greyscale or seen by someone colour-blind.</td></tr>
     <tr><td>Bigger dot, heavier ring</td><td>Someone holding a Community Team role. This
       is the only thing that marks them on the map, so the key spells it out</td></tr>
-    <tr><td>Not on the map</td><td>4,174 people. Their profile has no location. They are
+    <tr><td>Not on the map</td><td>4,149 people. Their profile has no location. They are
       still in the table and the counts</td></tr>
   </table>
   <div class="note">
@@ -465,9 +465,18 @@
 <h2 id="data">Where the data comes from</h2>
   <table>
     <tr><th>Signal</th><th>Source</th></tr>
-    <tr><td>Identity</td><td>A Make WP Slack account's email is
-      <code>&lt;org-username&gt;@chat.wordpress.org</code>, so the join between Slack and
-      WordPress.org is exact. No name matching, no guessing.</td></tr>
+    <tr><td>Identity</td><td><strong>Two tiers, and the difference matters.</strong>
+      Slack exposes the <code>&lt;org-username&gt;@chat.wordpress.org</code> email for 71
+      people here, and for those the join is exact. For the other 6,936 the build tries the
+      Slack handle as a WordPress.org username and checks the display name on top: 4,359
+      pass, 1,922 are labelled <em>unverified</em>, and 655 have no profile at that handle.
+      Do not describe this join as exact without saying which tier.</td></tr>
+    <tr><td>Location, borrowed</td><td>25 people had no location of their own and are
+      drawn at the coordinates they published on <em>automattic.com/map</em>. Eleven are
+      matched to that entry by WordPress.org username; the other 14 by name, because their
+      Slack handle is not a WordPress.org username and no key join can reach them. A name
+      shared by anyone else is skipped rather than guessed. Their record says
+      <em>automattic.com/map</em> instead of a city.</td></tr>
     <tr><td>Membership</td><td>Full member enumeration of
       <code>#community-events</code> and <code>#community-team</code>.</td></tr>
     <tr><td>Activity — Slack</td><td>A per-person message search across every channel our
@@ -503,7 +512,7 @@
     <li><strong>WordCamp and meetup organising.</strong> Not yet a source. Someone running
       events every month can still read as quiet here.</li>
     <li><strong>Private channels we are not in.</strong> Activity there reads as silence.</li>
-    <li><strong>Location, for 4,174 people.</strong> They never filled the field in. There is
+    <li><strong>Location, for 4,149 people.</strong> They never filled the field in. There is
       no way to recover this from their profile, only by asking.</li>
     <li><strong>Ambiguous places.</strong> A bare "Georgia" could be the country or the US
       state. Where it is genuinely unclear, the person is left unplaced rather than dropped

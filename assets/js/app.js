@@ -107,7 +107,10 @@
     // Per-layer narrowing, keyed by layer id, each a SET of selected values.
     // An empty set means all of them.
     overlayFilter: {},
-    set: [], showSet: false
+    set: [], showSet: false,
+    // What the current frame was fitted to. Null means nothing has been framed
+    // yet, so the first paint always fits. See renderMap().
+    fitSig: null
   };
 
   /* The team's edit surface. The in-page editor used to write to localStorage,
@@ -698,6 +701,18 @@
     return best;
   }
 
+  /* A BORROWED COORDINATE SAYS SO, WHEREVER IT IS SHOWN.
+   *
+   * Twenty-five people have a dot and no city: they never filled the field in,
+   * and the build placed them at the coordinates they published on
+   * automattic.com/map. Rendering that as a blank location makes a real dot
+   * look like a bug, and rendering it as a city would be inventing one. */
+  function placeText(p) {
+    if (p.city || p.country) return esc(p.city || p.country);
+    if (p.precision === "a8c") return '<span class="popup-def">automattic.com/map</span>';
+    return "";
+  }
+
   function slackLink(p) {
     return p.slack_id ? "https://wordpress.slack.com/team/" + encodeURIComponent(p.slack_id) : "";
   }
@@ -970,6 +985,16 @@
       : L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
           { attribution: "&copy; OpenStreetMap contributors", maxZoom: 18 });
     carto.addTo(state.map);
+
+    /* CLICKING THE MAP CLOSES THE CARD.
+     *
+     * POPUP_OPTS turns off closeOnClick and autoClose, because hover-to-peek
+     * needs a card that survives the pointer moving on. The cost was that a
+     * card opened by an actual click had no way to be dismissed by an actual
+     * click: clicking empty water left it sitting over the map. Leaflet fires
+     * this only for the map background, never for a marker, so the peek
+     * behaviour is untouched. */
+    state.map.on("click", function () { state.map.closePopup(); });
 
     function dark() {
       return !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
@@ -1385,8 +1410,7 @@
           className: "",
           html: av
             ? avatarPinHTML(av, def.shape + " " + def.cls(r) +
-                (inSet(def.id === "meetups" ? "meetup" : "a11n", r) ? " in-set" : ""),
-                box, def.shape === "diamond")
+                (inSet(def.id === "meetups" ? "meetup" : "a11n", r) ? " in-set" : ""), box)
             : '<div class="pin ' + def.shape + " " + def.cls(r) +
               (inSet(def.id === "meetups" ? "meetup" : "a11n", r) ? " in-set" : "") +
               '" style="width:' + box + "px;height:" + box + 'px"></div>',
@@ -1552,11 +1576,10 @@
 
   var AVATAR_PX = 34;
 
-  function avatarPinHTML(url, cls, size, counterRotate) {
+  function avatarPinHTML(url, cls, size) {
     var s = size || AVATAR_PX;
     return '<div class="pin has-avatar ' + cls + '" style="width:' + s + "px;height:" + s + 'px">' +
-      '<img src="' + esc(url) + "?s=" + (s * 2) + '" alt="" loading="lazy"' +
-      (counterRotate ? ' class="counter-rot"' : "") + "></div>";
+      '<img src="' + esc(url) + "?s=" + (s * 2) + '" alt="" loading="lazy"></div>';
   }
 
   /* Reset view. Flying to a person leaves the map wherever they are, and
@@ -1758,7 +1781,7 @@
       var html, box;
       if (p.avatar) {
         box = AVATAR_PX;
-        html = avatarPinHTML(p.avatar, cls, box, false);
+        html = avatarPinHTML(p.avatar, cls, box);
       } else {
         box = size;
         html = '<div class="pin ' + cls + '" style="width:' + size + "px;height:" + size + 'px"></div>';
@@ -1779,7 +1802,7 @@
           (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "<br>" +
           (hasRole(p) ? "<strong>" + esc(p.role) + "</strong>" : esc(p.role)) +
           (roleDef(p.role) ? '<br><span class="popup-def">' + esc(roleDef(p.role)) + "</span>" : "") +
-          "<br>" + esc(p.city || p.country || "") +
+          "<br>" + placeText(p) +
           (p.precision === "country" ? " <em>(country only)</em>" : "") +
           '<br><span class="tag ' + p.status + '">' + p.status + "</span>";
       }, POPUP_OPTS);
@@ -1807,6 +1830,22 @@
       });
     }
 
+    /* THE MAP FRAMES WHAT YOU ASKED FOR, NOT WHAT YOU SWITCHED ON.
+     *
+     * fitBounds ran on every render, so turning Automatticians on to check who
+     * is around Buffalo and turning them off again threw the view back out to
+     * the whole country. A layer toggle asks "is anyone else here", which is a
+     * question about the frame you are already in -- answering it by leaving
+     * that frame is the one thing it must not do.
+     *
+     * Only the controls that change WHO is in scope earn a new frame: place,
+     * state, search, preset, status. Layer visibility is deliberately absent
+     * from this signature. homeBounds is still recomputed every time, so Reset
+     * view goes where the current selection lives rather than where the map was
+     * last framed. */
+    var fitSig = [state.place, state.usState, state.q.trim(), state.preset,
+                  facetList(state.statuses).join(",")].join("|");
+
     if (pts.length) {
       // fitBounds against a pane Leaflet still measures as zero-height silently
       // falls back to zoom 0, which is how a map of 637 United States dots ends
@@ -1822,13 +1861,16 @@
       // current filter would land on, not the frame the app opened with: after
       // switching to Brazil, "reset" means Brazil, not the United States.
       state.homeBounds = bounds;
-      var fit = function () {
-        if (!state.map || state.selected || state.selectedMeetup) return;   // never fight a selection
-        state.map.invalidateSize(false);
-        state.map.fitBounds(bounds, { padding: [20, 20], maxZoom: 12 });
-      };
-      fit();
-      requestAnimationFrame(fit);
+      if (fitSig !== state.fitSig) {
+        state.fitSig = fitSig;
+        var fit = function () {
+          if (!state.map || state.selected || state.selectedMeetup) return; // never fight a selection
+          state.map.invalidateSize(false);
+          state.map.fitBounds(bounds, { padding: [20, 20], maxZoom: 12 });
+        };
+        fit();
+        requestAnimationFrame(fit);
+      }
     }
     renderOverlays();
   }
@@ -2404,7 +2446,8 @@
         "<td class='tabular'>" + p.posts + "</td>" +
         "<td class='tabular'>" + p.vetting + "</td>" +
         "<td class='tabular'>" + p.checkins + "</td>" +
-        "<td>" + esc(p.city || "—") + "</td>" +
+        "<td>" + (p.city ? esc(p.city)
+                          : p.precision === "a8c" ? "automattic.com/map" : "—") + "</td>" +
         "<td>" + esc(p.country || "—") + "</td>" +
         "<td>" + esc(p.employer || "—") + "</td>" +
         "<td>" + (p.slack ? link(slackLink(p), "@" + p.slack) : "—") + "</td>" +
@@ -2463,8 +2506,10 @@
         // reader's own unsaved change, not a label on the person.
         (p.locallyEdited ? ' <span class="edited">· edited locally</span>' : "") + "</p>" +
       "<dl>" +
-        "<dt>Location</dt><dd>" + esc(p.city || p.country || "not on record") +
-          (p.precision === "country" ? " <em>(country only)</em>" : "") + "</dd>" +
+        "<dt>Location</dt><dd>" + (placeText(p) || "not on record") +
+          (p.precision === "country" ? " <em>(country only)</em>" : "") +
+          (p.place_join === "name"
+            ? ' <em>(matched to that entry by name, not by .org username)</em>' : "") + "</dd>" +
         "<dt>Last seen</dt><dd>" + esc(p.last_signal || p.last_seen || "no signal on record") +
           (p.last_signal_source ? ' <span class="via">via ' + esc(p.last_signal_source) + "</span>" : "") +
           "</dd>" +
@@ -2748,7 +2793,15 @@
     } catch (e) {
       target = Math.max(state.map.getZoom(), FOCUS_ZOOM);
     }
-    state.map.flyTo([p.lat, p.lng], Math.min(target, MAX_FOCUS_ZOOM), { duration: 0.6 });
+    /* NEVER ZOOM OUT FROM WHERE THE VIEWER PUT THEMSELVES.
+     *
+     * The radius frame is the right arrival zoom when you come from a country
+     * view. It is wrong once someone has zoomed in on purpose: at a 100-mile
+     * radius it computes about zoom 7, so clicking a dot while reading Seattle
+     * at zoom 11 flew the map BACKWARDS to half of Washington. Framing the
+     * radius is a floor for arriving, not a ceiling on the reader. */
+    target = Math.max(Math.min(target, MAX_FOCUS_ZOOM), state.map.getZoom());
+    state.map.flyTo([p.lat, p.lng], target, { duration: 0.6 });
 
     // flyTo emits no moveend when the map is already where it was asked to go,
     // so the settle handler has to be armed both ways or the selection silently
@@ -2812,6 +2865,17 @@
   }
 
   function select(p, list) {
+    /* Clicking the person who is already selected is a request to look at their
+     * card, not a request to travel. Re-running the flight re-framed the map
+     * under someone who had just zoomed in to read it. */
+    if (state.selected && keyOf(state.selected) === keyOf(p)) {
+      // Never a toggle. Hover has usually opened the card already, so toggling
+      // would make clicking someone's face DISMISS them, which is the opposite
+      // of what a click on a person means. Clicking the map closes it.
+      var same = state.markers[keyOf(p)];
+      if (same && !same.isPopupOpen()) same.openPopup();
+      return;
+    }
     // Picking someone on the Explore map means you want to work on them, so it
     // hands you to Triage on that person rather than making you flip modes.
     // Must happen before renderSide(), or the list does not exist yet and

@@ -250,7 +250,7 @@
   its own chips and its own section in the list.</p>
   <p>Automatticians are the one exception to Place: automattic.com/map publishes
   coordinates and no country, so they cannot be filtered by it without inventing one. The
-  section says so rather than quietly showing the wrong 1,332 people.</p>
+  section says so rather than quietly showing the wrong 1,324 people.</p>
   <p>The key is on the map itself, behind the button under the zoom controls.</p>
 
   <h3>Sending someone a view</h3>
@@ -280,9 +280,10 @@
        data/people.json on each build; build_data.py prints which one has gone
        stale rather than silently letting it rot. -->
   <section id="data-note">
-  <p class="lead-sm"><strong>7,032 people, 2,883 of them placed on the map, current to
-  2026-08-26.</strong> This section is the answer to the questions that get asked out loud
-  while the tool is on screen.</p>
+  <p class="lead-sm"><strong>7,032 people, 2,872 of them placed on the map.</strong>
+  The Slack sweep that produces most of the activity signal last ran for everyone on
+  <strong>2026-08-12</strong>. This section is the answer to the questions that get asked
+  out loud while the tool is on screen.</p>
 
   <h3>The two headline numbers are nested, not side by side</h3>
   <p>This is the first thing anyone asks. They are not meant to sum to 7,032:
@@ -293,7 +294,7 @@
     <tr><td class="wrap-first">3,620 <em>of 7,032</em><br>gone quiet</td>
       <td>Everyone no source has seen in over 90 days: <code>dormant</code> plus
       <code>inactive</code>. A fraction of everyone currently in view.</td></tr>
-    <tr><td class="wrap-first">1,035 <em>of those</em><br>reachable now</td>
+    <tr><td class="wrap-first">1,051 <em>of those</em><br>reachable now</td>
       <td>How many of <em>that 3,620</em> have an active person within 100 miles. A slice
       of the figure to its left, not a separate group. The radius is adjustable inside a
       person's record, so this number moves with it.</td></tr>
@@ -311,13 +312,13 @@
     <tr><td>active</td><td>seen ≤30 days</td><td class="tabular">337</td><td>no</td></tr>
     <tr><td>new</td><td>joined in the last 90 days, nothing on record yet</td>
       <td class="tabular">40</td><td>no</td></tr>
-    <tr><td>slowing</td><td>31–92 days</td><td class="tabular">278</td><td>no</td></tr>
-    <tr><td>dormant</td><td>93–365 days</td><td class="tabular">424</td>
+    <tr><td>slowing</td><td>31–92 days</td><td class="tabular">277</td><td>no</td></tr>
+    <tr><td>dormant</td><td>93–365 days</td><td class="tabular">420</td>
       <td><strong>yes</strong></td></tr>
-    <tr><td>inactive</td><td>over a year</td><td class="tabular">3,196</td>
+    <tr><td>inactive</td><td>over a year</td><td class="tabular">3,200</td>
       <td><strong>yes</strong></td></tr>
     <tr><td>unknown</td><td>no signal in any source we can read</td>
-      <td class="tabular">2,757</td><td>no, see below</td></tr>
+      <td class="tabular">2,758</td><td>no, see below</td></tr>
     <tr><td><strong>total</strong></td><td></td>
       <td class="tabular"><strong>7,032</strong></td><td></td></tr>
   </table>
@@ -326,7 +327,7 @@
   meetup dashboard</a> uses, so both tools agree on what active means.</p>
 
   <div class="note">
-    <strong>The number to be ready for: 2,757 unknown.</strong> That is 39% of the dataset,
+    <strong>The number to be ready for: 2,758 unknown.</strong> That is 39% of the dataset,
     and it is deliberately <em>not</em> counted as gone quiet. We have never seen these
     people active, so we cannot say they went quiet. They joined a channel and read without
     posting, or their work happens somewhere none of the three sources below can see.
@@ -339,28 +340,41 @@
   silent in Slack for two years while filing pull requests every week reads as active, and
   the record says which source saw them.</p>
   <table>
-    <tr><th>Source</th><th>What it proves</th><th>Current to</th><th>Has seen</th>
-      <th>Freshest for</th></tr>
+    <tr><th>Source</th><th>What it proves</th><th>Swept everyone</th><th>Newest seen</th>
+      <th>Has seen</th><th>Freshest for</th></tr>
     <tr><td><strong>Slack</strong></td><td>Posts and thread replies across every channel,
-      not just the two community ones.</td><td class="tabular">2026-08-26</td>
-      <td class="tabular">4,219</td><td class="tabular">4,061</td></tr>
-    <tr><td><strong>Help Scout</strong></td><td>Replies in the community support queue.
-      Work that never touches Slack.</td><td class="tabular">2026-08-26</td>
-      <td class="tabular">68</td><td class="tabular">49</td></tr>
-    <tr><td><strong>GitHub</strong></td><td>Issues and pull requests in the WordPress org,
-      matched from their own profile link.</td><td class="tabular">2026-08-26</td>
-      <td class="tabular">153</td><td class="tabular">125</td></tr>
+      not just the two community ones.</td><td class="tabular">2026-08-12</td>
+      <td class="tabular">2026-08-26</td>
+      <td class="tabular">4,219</td><td class="tabular">4,064</td></tr>
+    <tr><td><strong>Help Scout</strong></td><td>The last time they signed in to Help Scout.
+      Presence, not work. It does not show they answered anything.</td>
+      <td class="tabular">2026-08-26</td><td class="tabular">2026-08-26</td>
+      <td class="tabular">67</td><td class="tabular">48</td></tr>
+    <tr><td><strong>GitHub</strong></td><td>Public GitHub activity, matched from a link
+      scraped off their profile and checked against WordPress.org's own record.</td>
+      <td class="tabular">2026-08-26</td><td class="tabular">2026-08-26</td>
+      <td class="tabular">150</td><td class="tabular">122</td></tr>
   </table>
+  <div class="note">
+    <strong>The first two date columns are not the same claim, and the difference is
+    two weeks.</strong> <em>Swept everyone</em> is when that source was last read for
+    every person, so it is how far back silence in it actually means silence.
+    <em>Newest seen</em> is just the freshest date anyone in it happens to carry. This
+    page used to print only the second under a heading that said the first, so a
+    Slack sweep that ended 2026-08-12 was presented as current to 2026-08-26. Anyone
+    who posted after the 12th in a channel the later top-up did not read still shows
+    as quiet here.
+  </div>
   <div class="note">
     <strong>Those last two columns are different questions, which is why the numbers
     differ.</strong> “Has seen” is everyone that source has a date for at all.
     “Freshest for” is the smaller group whose <em>most recent</em> signal came from
-    it. GitHub has seen 153 people; for 125 of them it is the newest thing we have, and the
-    other 28 have been in Slack more recently. Status uses the freshest, so nobody is
+    it. GitHub has seen 150 people; for 122 of them it is the newest thing we have, and the
+    other 28 have been seen more recently elsewhere, 26 in Slack and 2 in Help Scout. Status uses the freshest, so nobody is
     counted twice.
   </div>
-  <p>4,235 people have a date from at least one source. The other 2,797 have none, and those
-  are exactly the 2,757 unknown plus the 40 new.</p>
+  <p>4,234 people have a date from at least one source. The other 2,798 have none, and those
+  are exactly the 2,758 unknown plus the 40 new.</p>
 
   <h3>Who is counted</h3>
   <table>
@@ -374,11 +388,11 @@
   </table>
   <p>All three are always shown together. The first two carry a role badge and a ringed dot
   on the map; nothing is hidden to make a group findable. The map also carries 708 meetup
-  groups and 1,332 Automatticians as separate layers.</p>
+  groups and 1,324 Automatticians as separate layers.</p>
 
   <h3>What it cannot see</h3>
   <ul>
-    <li><strong>4,149 people have no dot.</strong> Their .org profile has no location. They
+    <li><strong>4,160 people have no dot.</strong> Their .org profile has no location. They
       are still counted and still in the table. Nothing is ever placed on a guess.</li>
     <li><strong>A meetup's window is much wider than a person's.</strong> A group counts
       as <em>Meeting</em> if it met within 365 days; a person counts as <em>active</em> if
@@ -437,7 +451,7 @@
       greyscale or seen by someone colour-blind.</td></tr>
     <tr><td>Bigger dot, heavier ring</td><td>Someone holding a Community Team role. This
       is the only thing that marks them on the map, so the key spells it out</td></tr>
-    <tr><td>Not on the map</td><td>4,149 people. Their profile has no location. They are
+    <tr><td>Not on the map</td><td>4,160 people. Their profile has no location. They are
       still in the table and the counts</td></tr>
   </table>
   <div class="note">
@@ -465,15 +479,20 @@
 <h2 id="data">Where the data comes from</h2>
   <table>
     <tr><th>Signal</th><th>Source</th></tr>
-    <tr><td>Identity</td><td><strong>Two tiers, and the difference matters.</strong>
-      Slack exposes the <code>&lt;org-username&gt;@chat.wordpress.org</code> email for 71
-      people here, and for those the join is exact. For the other 6,936 the build tries the
-      Slack handle as a WordPress.org username and checks the display name on top: 4,359
-      pass, 1,922 are labelled <em>unverified</em>, and 655 have no profile at that handle.
-      Do not describe this join as exact without saying which tier.</td></tr>
-    <tr><td>Location, borrowed</td><td>25 people had no location of their own and are
+    <tr><td>Identity</td><td><strong>Checked against WordPress.org's own record, not
+      against a name.</strong> The build guesses that someone's Slack handle is their
+      WordPress.org username, then verifies it: every .org profile belonging to a Slack
+      member publishes that person's Slack name, so a profile that names this account is
+      proof, and one that names nobody is not. Of the 6,936 community members,
+      <strong>5,825 are confirmed by that record</strong> and 134 more rest on the
+      display-name check alone, giving 5,959 confirmed in total. 129 stay
+      <em>unverified</em>, 193 could not be shown to belong to the person, and 655 have no
+      profile at that handle. Those four add up to 6,936, deliberately. Nothing read off an unconfirmed profile is published: no location, no
+      employer, no name. Those people stay counted, and their activity status is unaffected
+      because it never came from the profile.</td></tr>
+    <tr><td>Location, borrowed</td><td>33 people had no location of their own and are
       drawn at the coordinates they published on <em>automattic.com/map</em>. Eleven are
-      matched to that entry by WordPress.org username; the other 14 by name, because their
+      matched to that entry by WordPress.org username; the other 22 by name, because their
       Slack handle is not a WordPress.org username and no key join can reach them. A name
       shared by anyone else is skipped rather than guessed. Their record says
       <em>automattic.com/map</em> instead of a city.</td></tr>
@@ -487,8 +506,11 @@
       guessed.</td></tr>
     <tr><td>Activity — GitHub</td><td>Issues, pull requests and comments across the main
       WordPress repositories. Matched on the GitHub link people put on their own
-      WordPress.org profile, which is an exact join. Matching by identical username was
-      tested and rejected: it was wrong about 46% of the time.</td></tr>
+      WordPress.org profile, rather than on assuming the two usernames are the same.
+      Of the 1,584 profiles here that publish a link, 794 point at a username that is
+      <em>not</em> their WordPress.org name, so assuming they match would be wrong for half
+      of them. That is why the shortcut is rejected. The link itself is read out of the
+      profile page, so it is only as good as what the person put there.</td></tr>
     <tr><td>Supporter work</td><td>The application bot's log of who processed each WordCamp
       and Meetup application, plus weekly mentor check-in replies.</td></tr>
     <tr><td>Location</td><td>Each person's own WordPress.org profile, geocoded. No profile
@@ -496,23 +518,29 @@
   </table>
 
   <h3>How fresh each source is</h3>
-  <p>Sources are pulled on different days, so they are not equally current. This build is
-  dated <strong>2026-08-26</strong>, which is the newest thing in it. The per-source dates
-  and counts are in the table under <a href="#numbers">The data</a>, kept in one place so
-  the two cannot disagree.</p>
+  <p>Sources are pulled on different days, so they are not equally current, and each one
+  carries two dates that answer different questions. The date it was last swept for
+  everyone is the one that governs what silence means. The newest date anyone in it
+  carries does not. Both are in the table under <a href="#numbers">The data</a>.</p>
+  <p>For Slack the gap is currently two weeks: swept 2026-08-12, newest signal
+  2026-08-26. The <code>active</code> bucket therefore has fourteen days of real
+  all-channel coverage behind it, not thirty.</p>
   <p>If one source falls behind the others, someone quiet in it may simply not have been
   swept since. That is why status is the freshest signal across all of them rather than any
   single one.</p>
 <h2 id="limits">What it cannot see</h2>
   <ul>
     <li><strong>Coverage is uneven between sources.</strong> Slack has seen 4,219 people,
-      GitHub 153 and Help Scout 68 — because only 103 people have Help Scout accounts
-      at all, and a GitHub link is only found where someone put one on their profile.
-      <strong>An absent signal means we could not look, not that nothing happened.</strong></li>
+      GitHub 150 and Help Scout 67. The Help Scout figure comes from a manual export of
+      103 rows; the API itself returns 126 users, so even that denominator is a snapshot
+      rather than a fact about the world. A GitHub link is only found where someone put
+      one on their profile. <strong>For GitHub and Help Scout an absent signal means we
+      could not look, not that nothing happened. For Slack it means we looked and found
+      nothing, back to the sweep date.</strong></li>
     <li><strong>WordCamp and meetup organising.</strong> Not yet a source. Someone running
       events every month can still read as quiet here.</li>
     <li><strong>Private channels we are not in.</strong> Activity there reads as silence.</li>
-    <li><strong>Location, for 4,149 people.</strong> They never filled the field in. There is
+    <li><strong>Location, for 4,160 people.</strong> They never filled the field in. There is
       no way to recover this from their profile, only by asking.</li>
     <li><strong>Ambiguous places.</strong> A bare "Georgia" could be the country or the US
       state. Where it is genuinely unclear, the person is left unplaced rather than dropped

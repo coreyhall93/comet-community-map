@@ -1261,6 +1261,12 @@
        * differently from the people file, which would silently drop 147 US
        * groups from a US view. */
       place: function (m) { return matchPlaceCountry(MEETUP_COUNTRY[m.country] || m.country); },
+      /* Organizers and leaders are in this file already and are the reason a
+       * person searching their own name finds the group they run. */
+      search: function (m) {
+        return [m.group, m.city, m.country, m.region, m.organizer]
+          .concat(m.leaders || []).join(" ");
+      },
       listMeta: function (m) {
         return [
           esc(m.city || m.country || "") + " · " + m.members.toLocaleString() + " members",
@@ -1313,6 +1319,7 @@
        * rule this project runs on is never to infer. The section says so rather
        * than quietly showing the wrong 1,346 people. */
       place: null,
+      search: function (a) { return [a.name, a.role, a.org].join(" "); },
       listMeta: function (a) { return [esc(a.role || "Automattician")]; },
       quiet: function () { return false; },
       avatar: function (a) { return a.avatar || null; },
@@ -1345,7 +1352,7 @@
     if (!state.map) return;
     var live = state.overlayLayers[def.id];
     if (live) { state.map.removeLayer(live); state.overlayLayers[def.id] = null; }
-    if (!overlayOn(def.id)) return;
+    if (!layerShown(def)) return;
 
     // Exactly the records the list is showing, from the same function, so the
     // map and the rail cannot disagree about what is on.
@@ -1784,7 +1791,23 @@
     // responsive filter change and a frozen tab.
     state.layer.addLayers(batch);
 
-    if (placed.length) {
+    /* FRAMING FALLS BACK TO WHATEVER IS ACTUALLY ON THE MAP.
+     *
+     * Searching your own name when your people record has no location left the
+     * map wherever it happened to be, so the single pin that answered the
+     * question sat off screen. Only when people contribute nothing, though:
+     * Automatticians carry no country and are never filtered by Place, so
+     * folding them in unconditionally would blow a United States frame out to
+     * the whole world. */
+    var pts = placed.map(function (p) { return [p.lat, p.lng]; });
+    if (!pts.length) {
+      OVERLAYS.forEach(function (def) {
+        if (!layerShown(def)) return;
+        layerRecords(def).forEach(function (r) { pts.push([r.lat, r.lng]); });
+      });
+    }
+
+    if (pts.length) {
       // fitBounds against a pane Leaflet still measures as zero-height silently
       // falls back to zoom 0, which is how a map of 637 United States dots ends
       // up showing the whole globe. Fit once now and again after the browser has
@@ -1794,7 +1817,7 @@
       // pane width -- fine across 1100px, a sixth of a 500px context pane.
       // maxZoom covers a case the wide map hid: filtering to a single placed
       // person gives degenerate bounds, and fitBounds slams to street level.
-      var bounds = L.latLngBounds(placed.map(function (p) { return [p.lat, p.lng]; }));
+      var bounds = L.latLngBounds(pts);
       // Kept so Reset view has somewhere to go back to. It is the frame the
       // current filter would land on, not the frame the app opened with: after
       // switching to Brazil, "reset" means Brazil, not the United States.
@@ -1944,11 +1967,15 @@
 
     var walk = [];                    // what the arrow keys move through
     if (overlayOn("people")) html += peopleSectionHTML(list, walk);
+    // Counted, because a search that matches only an Automattician used to
+    // print the man's own row and "Nothing selected" directly above it.
+    var layerRows = 0;
     OVERLAYS.forEach(function (def) {
-      if (def.id === "people" || !overlayOn(def.id)) return;
+      if (def.id === "people" || !layerShown(def)) return;
+      layerRows += layerRecords(def).length;
       html += layerSectionHTML(def);
     });
-    if (!walk.length) html += emptyHTML();
+    if (!walk.length && !layerRows) html += emptyHTML();
 
     state.listKeys = walk;
     side.innerHTML = html;
@@ -2095,8 +2122,9 @@
     var limit = state.limits[def.id] || 40;
     var shown = recs.slice(0, limit);
 
-    var html = sectionHead(def.label, recs.length,
-      def.place ? "" : "not filtered by Place — no country on record");
+    var note = def.place ? "" : "not filtered by Place, no country on record";
+    if (!overlayOn(def.id)) note = "found by your search. This layer is switched off.";
+    var html = sectionHead(def.label, recs.length, note);
     if (!recs.length) {
       html += '<div class="state">None match this selection.</div>';
       return html;
@@ -2118,12 +2146,35 @@
    * chips, plus Place where the layer carries a country. The map filters by
    * exactly this, so the two surfaces cannot disagree about what is on. */
   function layerRecords(def) {
+    var q = state.q.trim().toLowerCase();
     return (def.data() || []).filter(function (r) {
       if (r.lat == null) return false;
       if (def.facet && !facetMatch(state.overlayFilter[def.id], def.facet(r))) return false;
       if (def.place && !def.place(r)) return false;
+      // A layer that has not declared what it is searchable by matches nothing
+      // under a query, rather than quietly ignoring the query and showing
+      // everything. Silence is the safe default here; a wrong answer is not.
+      if (q && (!def.search || def.search(r).toLowerCase().indexOf(q) === -1)) return false;
       return true;
     });
+  }
+
+  /* A SEARCH LOOKS EVERYWHERE, INCLUDING IN LAYERS THAT ARE SWITCHED OFF.
+   *
+   * "Why am I not on the map?" was asked by someone who IS on the map: he is an
+   * Automattician, that layer is off on load, and search only ever read the
+   * people layer. So the tool answered a question about the whole map using a
+   * third of it, and told a man standing on it that he was not there.
+   *
+   * A search is a lens, not a setting. It reveals a matching layer for as long
+   * as the query is there and mutates nothing, so clearing the box returns you
+   * to exactly the toggles you had. The section says it was the search that
+   * turned the layer up, or the reveal is indistinguishable from a bug. */
+  function searching() { return state.q.trim().length > 0; }
+
+  function layerShown(def) {
+    if (overlayOn(def.id)) return true;
+    return searching() && layerRecords(def).length > 0;
   }
 
   function sectionHead(label, n, note) {
@@ -2159,10 +2210,15 @@
       el.onmouseleave = function () { markMarker(key, "is-hot", false); };
       if (layer) {
         var def = overlayById(layer);
-        if (!def || !def.select) return;
+        if (!def) return;
         var rec = null;
         layerRecords(def).forEach(function (r) { if (def.key(r) === key) rec = r; });
-        el.onclick = function () { if (rec) def.select(rec); };
+        if (!rec) return;
+        // Automatticians have no record panel of their own, which used to make
+        // the row inert. It still has to answer the only question a search into
+        // that layer is ever asking: where is this on the map.
+        el.onclick = def.select ? function () { def.select(rec); }
+                                : function () { focusRecord(def, rec); };
         return;
       }
       // Match on the .org key, not the name: 78 names in this dataset are shared
@@ -2722,6 +2778,37 @@
     }
     state.map.once("moveend", onSettle);
     setTimeout(onSettle, 750);
+  }
+
+  /* The same move as focusOnMap(), for a record that is not a person.
+   * focusOnMap() reaches for keyOf() and state.layer -- both people-only -- so
+   * this walks the overlay's own cluster group instead. */
+  function focusRecord(def, r) {
+    if (!state.map || r.lat == null) return;
+    state.map.invalidateSize(false);
+    var zoom = Math.min(Math.max(state.map.getZoom(), FOCUS_ZOOM), MAX_FOCUS_ZOOM);
+    state.map.flyTo([r.lat, r.lng], zoom, { duration: 0.6 });
+    var m = state.markers[def.key(r)];
+    if (!m) return;
+    var done = false;
+    function settle() {
+      if (done) return;
+      done = true;
+      var group = state.overlayLayers[def.id];
+      var parent = group && group.getVisibleParent && group.getVisibleParent(m);
+      if (parent && parent !== m && parent.spiderfy) {
+        parent.spiderfy();
+        setTimeout(function () {
+          if (state.map.panInside) state.map.panInside(m.getLatLng(), { padding: [30, 30] });
+          m.openPopup();
+        }, 320);
+        return;
+      }
+      m.openPopup();
+    }
+    // flyTo emits no moveend when the map is already there, same as focusOnMap.
+    state.map.once("moveend", settle);
+    setTimeout(settle, 750);
   }
 
   function select(p, list) {

@@ -1110,3 +1110,27 @@ button.about-link {
 .gate-row { display: flex; gap: var(--s-2); align-items: center; }
 .gate-row .field { flex: 1 1 auto; min-width: 0; }
 .gate-row .btn { flex: none; }
+
+/* Area report control, in the same 30px chrome as reset and expand. */
+.cm-report a {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; color: var(--ink); background: var(--panel);
+}
+.cm-report a:hover { background: var(--tint); }
+.cm-report svg { display: block; }
+
+/* The area report. Same rows as every other list, so hover and click mean
+   what they mean everywhere else. The links on a row are the reason the report
+   exists, so they are set apart from the distance rather than run into it. */
+.report .meta.links a { color: var(--accent); text-decoration: none;
+  /* A little vertical padding so a thumb has something to land on. */
+  display: inline-block; padding: var(--s-1) 0; }
+.report .meta.links a:hover { text-decoration: underline; }
+.report .meta.links .sep { color: var(--faint); margin: 0 var(--s-1); }
+/* .state was padded for an empty rail; inside the report it sits with the rows. */
+.report .state { padding: var(--s-2) 0 var(--s-3); }
+.report-count { font-variant-numeric: tabular-nums; }
+/* The fallback when the clipboard refuses: the text itself, full width. */
+#report-text { width: 100%; margin-top: var(--s-2); font-size: var(--t-small); line-height: 1.45; }
+.report > .label { margin-top: var(--s-5); }
+.report > .detail + .label { margin-top: var(--s-3); }

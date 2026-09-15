@@ -72,6 +72,11 @@
     map: null, layer: null, selected: null,
     radiusMi: 100, markers: {}, nearStatus: "",
     a11n: [], meetups: [], selectedMeetup: null,
+    // The area report: a centre, a radius and a label. Null when none is open.
+    // It survives opening a person from inside it, so Clear on that record
+    // returns to the report rather than to the queue. reportCircle is the
+    // Leaflet circle drawn for it, kept so it can be removed.
+    report: null, reportCircle: null,
     // A view toggle, not a mode. Expanding hides the rail and gives the map the
     // whole stage; nothing else about the tool changes, and nothing you click
     // can flip it back on you. It replaced a Triage/Explore pair where picking
@@ -224,6 +229,14 @@
     else if (state.selectedMeetup) {
       parts.push("mt=" + encodeURIComponent(overlayById("meetups").key(state.selectedMeetup)));
     }
+    // The area report travels as a coordinate, a radius and a label. A
+    // coordinate is a place, not a person, so nothing the passphrase gates is
+    // in the link.
+    if (state.report) {
+      parts.push("ar=" + state.report.lat.toFixed(4) + "," + state.report.lng.toFixed(4));
+      parts.push("arr=" + state.report.mi);
+      if (state.report.label) parts.push("arn=" + encodeURIComponent(state.report.label));
+    }
     var on = OVERLAYS.filter(function (d) { return state.overlays[d.id]; })
                      .map(function (d) { return d.id; });
     if (on.length) parts.push("ly=" + on.join(","));
@@ -322,6 +335,22 @@
      * contradicts the filters drawn around it. */
     state.selected = null;
     state.selectedMeetup = null;
+    // Validated like everything else: a mangled coordinate opens nothing
+    // rather than a report centred on the Gulf of Guinea.
+    state.report = null;
+    if (h.ar) {
+      var ll = h.ar.split(",");
+      var rla = parseFloat(ll[0]), rln = parseFloat(ll[1]);
+      if (isFinite(rla) && isFinite(rln) && Math.abs(rla) <= 90 && Math.abs(rln) <= 180) {
+        var rmi = parseInt(h.arr, 10);
+        state.report = {
+          lat: rla, lng: rln,
+          mi: (rmi >= REPORT_MIN_MI && rmi <= REPORT_MAX_MI) ? rmi : REPORT_RADIUS,
+          label: h.arn || ""
+        };
+        touched = true;
+      }
+    }
     if (h.p) {
       var hit = byKey(h.p, visible());
       if (hit) { state.selected = hit; state.lastViewed = h.p; touched = true; }
@@ -1759,8 +1788,42 @@
     state.resetCtl.addTo(state.map);
   }
 
+  /* Area report, from wherever the map is looking. The report otherwise needs
+   * a record to start from, and the place you want to ask about is often one
+   * with no record at all -- Sebastopol has one Automattician and no meetup.
+   * Pan there, press this, and the report is centred on the middle of the map. */
+  function addReportControl() {
+    if (!state.map || state.reportCtl) return;
+    var Ctl = L.Control.extend({
+      options: { position: "topleft" },
+      onAdd: function () {
+        var wrap = L.DomUtil.create("div", "leaflet-bar leaflet-control cm-report");
+        var a = L.DomUtil.create("a", "", wrap);
+        a.href = "#";
+        a.title = "Report on the area at the centre of the map";
+        a.setAttribute("role", "button");
+        a.setAttribute("aria-label", "Report on the area at the centre of the map");
+        a.innerHTML =
+          '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round" aria-hidden="true">' +
+          '<circle cx="12" cy="12" r="7"></circle><circle cx="12" cy="12" r="1.5" fill="currentColor"></circle>' +
+          '<path d="M12 2v3M12 19v3M2 12h3M19 12h3"></path></svg>';
+        L.DomEvent.disableClickPropagation(wrap);
+        L.DomEvent.on(a, "click", L.DomEvent.stop);
+        L.DomEvent.on(a, "click", function () {
+          var c = state.map.getCenter();
+          openReport(c.lat, c.lng, "");
+        });
+        return wrap;
+      }
+    });
+    state.reportCtl = new Ctl();
+    state.reportCtl.addTo(state.map);
+  }
+
   function renderMap(list) {
-    if (!state.map) { initMap(); addExpandControl(); addResetControl(); addKeyControl(); }
+    if (!state.map) { initMap(); addExpandControl(); addResetControl(); addReportControl(); addKeyControl(); }
     state.layer.clearLayers();
     state.markers = {};
     // People is a layer now, and a layer that is off draws nothing. Without
@@ -1864,7 +1927,8 @@
       if (fitSig !== state.fitSig) {
         state.fitSig = fitSig;
         var fit = function () {
-          if (!state.map || state.selected || state.selectedMeetup) return; // never fight a selection
+          // never fight a selection, or an open area report
+          if (!state.map || state.selected || state.selectedMeetup || state.report) return;
           state.map.invalidateSize(false);
           state.map.fitBounds(bounds, { padding: [20, 20], maxZoom: 12 });
         };
@@ -1942,7 +2006,7 @@
     var stage = $("stage");
     if (stage) {
       stage.classList.toggle("has-record",
-        !!(state.selected || state.selectedMeetup || state.showSet));
+        !!(state.selected || state.selectedMeetup || state.showSet || state.report));
     }
 
     // Required, not redundant: select(), closeRecord(), selectMeetup(), the set
@@ -1967,6 +2031,7 @@
     if (state.selectedMeetup) {
       pane.innerHTML = meetupDetailHTML(state.selectedMeetup, list) + pendingHTML();
       wireMeetupDetail(state.selectedMeetup, list);
+      wireAreaButton();
       wirePending();
       return;
     }
@@ -1975,6 +2040,16 @@
       pane.innerHTML = detailHTML(state.selected, list) +
         (state.editing ? editorHTML(state.selected) : "") + pendingHTML();
       wireDetail(state.selected, list);
+      wireAreaButton();
+      wirePending();
+      return;
+    }
+
+    // Below a person or a meetup on purpose: opening someone from the report
+    // shows their record, and Clear on it lands back here.
+    if (state.report) {
+      pane.innerHTML = reportHTML(state.report) + pendingHTML();
+      wireReport(state.report, list);
       wirePending();
       return;
     }
@@ -2530,6 +2605,7 @@
       '<div class="btnrow">' +
         setAddButtonHTML("person", p) +
         '<button class="btn" id="do-edit">Suggest a correction</button>' +
+        areaButtonHTML(p.lat, p.lng, p.city || p.country || "") +
       "</div>" +
     "</div>";
   }
@@ -2605,7 +2681,8 @@
       '<p class="hint">Meeting means an event within 365 days, a window set by the ' +
       'events dashboard ' +
       "this comes from. It is a wider window than the one used for people.</p>" +
-      '<div class="btnrow" style="margin-bottom:var(--s-3)">' + setAddButtonHTML("meetup", mt) + "</div>";
+      '<div class="btnrow" style="margin-bottom:var(--s-3)">' + setAddButtonHTML("meetup", mt) +
+        areaButtonHTML(mt.lat, mt.lng, mt.city || mt.group) + "</div>";
 
     if (!Object.keys(tally).length) {
       return head + '<p class="label">Who is nearby</p>' + radiusSliderHTML() +
@@ -3002,6 +3079,359 @@
     renderSide(visible());
   }
 
+  /* --- area report ----------------------------------------------------------
+   *
+   * "Who do we have around X?" used to be answered by reading the map and
+   * writing a Slack message by hand: the Automatticians nearby, the community
+   * people nearby, the meetup groups nearby, each with a distance and a link.
+   * This is that message as a view of the tool, so it can be sent as a link
+   * and rebuilt for any place.
+   *
+   * It reads the WHOLE dataset, not the current filters: who lives near a place
+   * is a fact about the world, the same rule the person record follows. Place,
+   * status and layer toggles change what the map draws, never what this says.
+   *
+   * Distances are straight-line miles from the centre. Driving time needs a
+   * router this page does not have, so it is not claimed. */
+  var REPORT_RADIUS = 60, REPORT_MIN_MI = 10, REPORT_MAX_MI = 150;
+
+  function openReport(lat, lng, label, mi) {
+    var keep = state.report && state.report.mi;
+    state.report = { lat: +lat, lng: +lng, label: label || "", mi: mi || keep || REPORT_RADIUS };
+    if (!state.report.label) state.report.label = guessPlaceLabel(state.report);
+    state.selected = null; state.selectedMeetup = null; state.showSet = false; state.editing = false;
+    if (state.mapExpanded) setMapExpanded(false);
+    if (state.map) state.map.closePopup();
+    clearMarks("is-picked");
+    clearMarks("is-near");
+    renderSide(visible());
+    drawReportCircle();
+    frameReport();
+  }
+
+  function closeReport() {
+    state.report = null;
+    removeReportCircle();
+    closeRecord();
+  }
+
+  /* A name for the centre, read off the nearest thing that has one, so the
+   * heading says "Around Sebastopol" rather than "Around 38.40, -122.82". The
+   * caller's own label wins when it has one. */
+  function guessPlaceLabel(c) {
+    var best = null, reach = c.mi || REPORT_RADIUS;
+    state.meetups.forEach(function (m) {
+      if (m.lat == null || !m.city) return;
+      var d = distance(c, m);
+      if (miles(d) <= reach && (!best || d < best.d)) {
+        var region = (m.region || "").split("/")[1];
+        best = { d: d, label: m.city + (region ? ", " + region : "") };
+      }
+    });
+    if (best) return best.label;
+    neighbours().forEach(function (p) {
+      if (p.lat == null || !p.city) return;
+      var d = distance(c, p);
+      if (miles(d) <= reach && (!best || d < best.d)) best = { d: d, label: p.city };
+    });
+    if (best) return best.label;
+    // Nothing named within reach. Decimals are not a place anyone would paste.
+    return "the map centre";
+  }
+
+  function miText(d) {
+    // distance() rounds to the kilometre, so 0 is "under 500 m on record".
+    if (d === 0) return "under 1\u00a0mi";
+    return Math.round(miles(d)).toLocaleString() + "\u00a0mi";
+  }
+
+  function a8cSlackLink(id) {
+    return id ? "https://a8c.slack.com/team/" + encodeURIComponent(id) : "";
+  }
+  function matticspaceLink(org) {
+    return org ? "https://matticspace.a8c.com/" + encodeURIComponent(org) + "/" : "";
+  }
+
+  /* Everything within the radius, in three lists, nearest first.
+   *
+   * Automatticians come from two places and are one list: the overlay (people
+   * on automattic.com/map who are not in the community channels) and the
+   * community records flagged a8c (people who are in both). A person in both
+   * appears in the a8c list AND the community list, because they are reachable
+   * on both sides and the two lists answer different questions. */
+  function reportItems(rep) {
+    var c = { lat: rep.lat, lng: rep.lng };
+    var within = function (r) { return r.lat != null && miles(distance(c, r)) <= rep.mi; };
+    var byDist = function (x, y) { return x.d - y.d; };
+
+    var a8c = [], unnamed = 0;
+    state.a11n.forEach(function (a) {
+      if (!within(a)) return;
+      if (!(a.name || "").trim()) { unnamed++; return; }
+      a8c.push({ kind: "a11n", rec: a, d: distance(c, a), name: a.name, title: a.role || "",
+                 city: a.city || "", slack: a8cSlackLink(a.slack_id),
+                 ms: matticspaceLink(a.org), org: orgLink(a) });
+    });
+    var community = [];
+    neighbours().forEach(function (p) {
+      if (!within(p)) return;
+      var d = distance(c, p);
+      community.push({ kind: "person", rec: p, d: d });
+      if (p.a8c) {
+        // The city shown is the one the distance was measured from: the
+        // person's own location first, and the directory's only when the
+        // record has none of its own (which is where its coordinate came from).
+        a8c.push({ kind: "person", rec: p, d: d, name: p.a8c_name || p.name,
+                   title: p.a8c_title || "",
+                   city: p.city || p.a8c_city || p.country || "",
+                   slack: a8cSlackLink(p.a8c_slack_id),
+                   // The directory's own handle, which is not always the .org
+                   // username: Jon Burke is jonburke there and
+                   // jonathangilmoreburke on .org.
+                   ms: matticspaceLink(p.a8c_org),
+                   org: orgLink(p) });
+      }
+    });
+    var meetups = [];
+    state.meetups.forEach(function (m) {
+      if (!within(m)) return;
+      meetups.push({ kind: "meetup", rec: m, d: distance(c, m) });
+    });
+    a8c.sort(byDist); community.sort(byDist); meetups.sort(byDist);
+    return { a8c: a8c, unnamed: unnamed, community: community, meetups: meetups };
+  }
+
+  function reportLinksHTML(pairs) {
+    var out = pairs.filter(function (l) { return l[0]; }).map(function (l) {
+      return '<a href="' + esc(l[0]) + '" target="_blank" rel="noopener">' + esc(l[1]) + "</a>";
+    });
+    return out.length
+      ? '<div class="meta links">' + out.join('<span class="sep" aria-hidden="true">·</span>') + "</div>"
+      : "";
+  }
+
+  function reportHTML(rep) {
+    if (!rep.label) rep.label = guessPlaceLabel(rep);
+    var it = reportItems(rep);
+    var mapped = neighbours().filter(function (p) { return p.lat != null; }).length;
+
+    var html = '<div class="report"><div class="detail">' +
+      '<button class="backlink" id="do-back-report">Clear</button>' +
+      "<h2>Around " + esc(rep.label) + "</h2>" +
+      '<p class="meta report-count">' + it.a8c.length + " Automattician" + (it.a8c.length === 1 ? "" : "s") +
+        " · " + it.community.length + " community · " + it.meetups.length + " meetup" +
+        (it.meetups.length === 1 ? "" : "s") + "</p>" +
+      '<div class="radius"><div class="radius-row">' +
+        '<input id="r-radius" type="range" min="' + REPORT_MIN_MI + '" max="' + REPORT_MAX_MI +
+          '" step="10" value="' + rep.mi + '" aria-label="Report radius in miles">' +
+        '<output class="radius-out" id="r-radius-out">' + rep.mi + " mi</output>" +
+      "</div></div>" +
+      '<p class="hint">Straight-line miles from the centre, not driving. ' +
+        mapped.toLocaleString() + " of " + neighbours().length.toLocaleString() +
+        " people have a location; anyone without one cannot appear here.</p>" +
+      '<div class="btnrow"><button class="btn" id="do-copy-report">Copy as text</button></div>' +
+      "</div>";
+
+    // a8c
+    html += '<p class="label">Automatticians · ' + it.a8c.length + "</p>";
+    if (!it.a8c.length) html += '<div class="state">No Automatticians within ' + rep.mi + " miles.</div>";
+    html += '<div class="nearlist">' + it.a8c.map(function (h) {
+      var key = h.kind === "a11n" ? overlayById("a11n").key(h.rec) : keyOf(h.rec);
+      return '<div class="row near is-a11n" data-kind="' + h.kind + '" data-key="' + esc(key) + '">' +
+        '<div class="nm">' + esc(h.name) + "</div>" +
+        '<div class="meta">' + [esc(h.title), esc(h.city), "<strong>" + miText(h.d) + "</strong>"]
+          .filter(Boolean).join(" · ") + "</div>" +
+        reportLinksHTML([[h.slack, "a8c Slack"], [h.ms, "Matticspace"], [h.org, ".org profile"]]) +
+      "</div>";
+    }).join("") + "</div>";
+    if (it.unnamed) {
+      html += '<p class="hint">' + it.unnamed + " more within range " +
+        (it.unnamed === 1 ? "is" : "are") + " not named on automattic.com/map, so counted and not listed.</p>";
+    }
+
+    // community
+    html += '<p class="label">Community · ' + it.community.length + "</p>";
+    if (!it.community.length) html += '<div class="state">Nobody with a location within ' + rep.mi + " miles.</div>";
+    html += '<div class="nearlist">' + it.community.map(function (h) {
+      var p = h.rec;
+      return '<div class="row near" data-kind="person" data-key="' + esc(keyOf(p)) + '">' +
+        '<div class="nm">' + esc(p.name) + ' <span class="tag ' + p.status + '">' + p.status + "</span>" +
+          roleTag(p) + (p.a8c ? ' <span class="tag a8c">a8c</span>' : "") + "</div>" +
+        '<div class="meta">' + (hasRole(p) ? "" : roleHTML(p.role)) +
+          (p.employer ? (hasRole(p) ? "" : " · ") + esc(p.employer) : "") + "</div>" +
+        '<div class="meta">' + esc(p.city || p.country ||
+            (p.precision === "a8c" ? "placed from automattic.com/map" : "location not on record")) +
+          " · <strong>" + miText(h.d) + "</strong>" +
+          (p.last_signal || p.last_seen ? " · last seen " + esc(p.last_signal || p.last_seen) : "") + "</div>" +
+        reportLinksHTML([[slackLink(p), "Make WP Slack"], [orgLink(p), ".org profile"]]) +
+      "</div>";
+    }).join("") + "</div>";
+
+    // meetups
+    html += '<p class="label">Meetups · ' + it.meetups.length + "</p>";
+    if (!it.meetups.length) html += '<div class="state">No meetup groups within ' + rep.mi + " miles.</div>";
+    html += '<div class="nearlist">' + it.meetups.map(function (h) {
+      var m = h.rec, def = overlayById("meetups");
+      return '<div class="row near is-meetup" data-kind="meetup" data-key="' + esc(def.key(m)) + '">' +
+        '<div class="nm">' + esc(m.group) + ' <span class="tag ' + def.cls(m) + '">' + esc(meetupLabel(m.status)) + "</span></div>" +
+        '<div class="meta">' + esc(m.city || m.country || "") + " · " + m.members.toLocaleString() + " members · " +
+          (m.lastEvent ? "last event " + esc(m.lastEvent) : "no events on record") +
+          " · <strong>" + miText(h.d) + "</strong></div>" +
+        (m.leaders && m.leaders.length ? '<div class="meta">Leaders: ' +
+            m.leaders.slice(0, 3).map(esc).join(", ") +
+            (m.leaders.length > 3 ? " +" + (m.leaders.length - 3) + " more" : "") + "</div>" : "") +
+        reportLinksHTML([[m.url, "meetup.com"]]) +
+      "</div>";
+    }).join("") + "</div>";
+
+    return html + "</div>";
+  }
+
+  /* The same report as plain text, in the shape it gets pasted into Slack.
+   * Slack mentions cannot be pasted, so a8c people carry their Slack profile
+   * URL instead, which resolves to the same person. */
+  function reportText(rep) {
+    var it = reportItems(rep);
+    var lines = ["Around " + rep.label + " (" + rep.mi + " mi, straight-line)", ""];
+    lines.push("a8c, closest first");
+    if (!it.a8c.length) lines.push("• none within range");
+    it.a8c.forEach(function (h) {
+      lines.push("• " + h.name + (h.city ? ", " + h.city : "") + (h.title ? " (" + h.title + ")" : "") +
+        ", " + miText(h.d) + (h.slack ? " " + h.slack : h.ms ? " " + h.ms : ""));
+    });
+    if (it.unnamed) lines.push("• " + it.unnamed + " more not named on automattic.com/map");
+    lines.push("", "Community, closest first");
+    if (!it.community.length) lines.push("• nobody with a location within range");
+    it.community.forEach(function (h) {
+      var p = h.rec, where = (p.city || p.country || "").replace(/<[^>]+>/g, "");
+      lines.push("• " + p.name + " (" + p.status + ")" + (where ? ", " + where : "") +
+        (p.employer ? ", " + p.employer : "") + ", " + miText(h.d) +
+        (orgLink(p) ? " " + orgLink(p) : slackLink(p) ? " " + slackLink(p) : ""));
+    });
+    lines.push("", "Meetups, closest first");
+    if (!it.meetups.length) lines.push("• none within range");
+    it.meetups.forEach(function (h) {
+      var m = h.rec;
+      lines.push("• " + m.group + " (" + meetupLabel(m.status) + ")" + (m.city ? ", " + m.city : "") +
+        ", " + m.members.toLocaleString() + " members" +
+        (m.lastEvent ? ", last event " + m.lastEvent : ", no events on record") +
+        (m.leaders && m.leaders.length ? ", leaders " + m.leaders.join(", ") : "") +
+        ", " + miText(h.d) + (m.url ? " " + m.url : ""));
+    });
+    return lines.join("\n");
+  }
+
+  function copyText(text, btn, then) {
+    function done(ok) {
+      if (then) then(ok);
+      if (!btn) return;
+      var was = btn.textContent;
+      btn.textContent = ok ? "Copied" : "Select and copy below";
+      setTimeout(function () { btn.textContent = was; }, 1600);
+    }
+    // The async API refuses in some embedded and unfocused contexts; the old
+    // selection-based copy still works there, so it is the fallback, not the
+    // failure.
+    function legacy() {
+      var ta = document.createElement("textarea");
+      ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.top = "-100vh";
+      document.body.appendChild(ta); ta.select();
+      var ok = false;
+      try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+      document.body.removeChild(ta);
+      done(ok);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); }, legacy);
+      return;
+    }
+    legacy();
+  }
+
+  function drawReportCircle() {
+    removeReportCircle();
+    if (!state.map || !state.report) return;
+    // The theme's accent, read at draw time, so the circle follows dark mode
+    // the way every marker colour does.
+    var accent = (getComputedStyle(document.documentElement).getPropertyValue("--accent") || "").trim() || "#0B76D1";
+    state.reportCircle = L.circle([state.report.lat, state.report.lng], {
+      radius: state.report.mi * 1609.34, color: accent, weight: 1.5,
+      opacity: 0.8, fillColor: accent, fillOpacity: 0.07, interactive: false
+    }).addTo(state.map);
+  }
+  function removeReportCircle() {
+    if (state.reportCircle && state.map) state.map.removeLayer(state.reportCircle);
+    state.reportCircle = null;
+  }
+  function frameReport() {
+    if (!state.map || !state.reportCircle) return;
+    state.map.invalidateSize(false);
+    state.map.flyToBounds(state.reportCircle.getBounds(), { padding: [24, 24], duration: 0.6 });
+  }
+
+  function wireReport(rep, list) {
+    var back = $("do-back-report");
+    if (back) back.onclick = closeReport;
+    var copy = $("do-copy-report");
+    if (copy) copy.onclick = function () {
+      copyText(reportText(rep), copy, function (ok) {
+        // A browser that refuses the clipboard still gets the text, in a box
+        // that can be selected by hand, rather than a button that says no.
+        if (ok || $("report-text")) return;
+        var ta = document.createElement("textarea");
+        ta.id = "report-text"; ta.className = "field"; ta.readOnly = true;
+        ta.rows = 10; ta.value = reportText(rep);
+        ta.setAttribute("aria-label", "Report as text");
+        copy.parentNode.insertAdjacentElement("afterend", ta);
+        ta.focus(); ta.select();
+      });
+    };
+
+    var rad = $("r-radius"), out = $("r-radius-out");
+    if (rad) {
+      rad.oninput = function (e) { if (out) out.textContent = e.target.value + " mi"; };
+      rad.onchange = function (e) {
+        rep.mi = parseInt(e.target.value, 10);
+        renderSide(visible());
+        drawReportCircle();
+        frameReport();
+      };
+    }
+
+    Array.prototype.forEach.call(document.querySelectorAll("#record .row.near"), function (el) {
+      var key = el.dataset.key, kind = el.dataset.kind;
+      el.onmouseenter = function () { markMarker(key, "is-hot", true); };
+      el.onmouseleave = function () { markMarker(key, "is-hot", false); };
+      el.onclick = function (ev) {
+        // A link on the row is the row's point; following it is not selecting.
+        if (ev.target && ev.target.closest && ev.target.closest("a")) return;
+        if (kind === "person") {
+          var hit = byKey(key, neighbours());
+          if (hit) select(hit, list);
+        } else if (kind === "meetup") {
+          var def = overlayById("meetups"), mt = null;
+          state.meetups.forEach(function (m) { if (def.key(m) === key) mt = m; });
+          if (mt) selectMeetup(mt);
+        } else if (kind === "a11n") {
+          var adef = overlayById("a11n"), rec = null;
+          state.a11n.forEach(function (a) { if (adef.key(a) === key) rec = a; });
+          if (rec) focusRecord(adef, rec);
+        }
+      };
+    });
+  }
+
+  function areaButtonHTML(lat, lng, label) {
+    if (lat == null) return "";
+    return '<button class="btn" id="do-area" data-lat="' + lat + '" data-lng="' + lng +
+      '" data-label="' + esc(label || "") + '">Report on this area</button>';
+  }
+  function wireAreaButton() {
+    var b = $("do-area");
+    if (!b) return;
+    b.onclick = function () { openReport(b.dataset.lat, b.dataset.lng, b.dataset.label); };
+  }
+
   /* Move through the ranked queue without going back to it first. Triage is the
    * job this tool exists for, and it was costing two clicks and a lost scroll
    * position per person. Deliberately does not wrap: running off the end of a
@@ -3331,6 +3761,12 @@
       var linked = state.selected;
       state.selected = null;
       setTimeout(function () { select(linked, visible()); }, 0);
+    }
+    // A report arriving by link draws its circle and frames it, same deferral.
+    if (state.report) {
+      // After the first fit's own requestAnimationFrame, or the home frame
+      // lands on top of this one.
+      setTimeout(function () { drawReportCircle(); frameReport(); }, 80);
     }
     renderSetCount();
   }

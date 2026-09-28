@@ -310,6 +310,7 @@
         var set = state.overlayFilter[def.id] = {};
         part.slice(i + 1).split(",").forEach(function (v) {
           try { v = decodeURIComponent(v); } catch (e) { /* keep it raw */ }
+          if (def.id === "meetups" && MEETUP_LEGACY[v]) v = MEETUP_LEGACY[v];
           if (v) set[v] = true;
         });
       });
@@ -1246,22 +1247,29 @@
    *   select(r)         what happens when its marker is clicked
    *   clusterCls(kids)  status class for a cluster of these
    */
-  var MEETUP_CLASS = { "Active": "m-active", "Dormant": "m-dormant", "Not started": "m-never" };
+  var MEETUP_CLASS = { "Active": "m-active", "Fading": "m-fading", "Inactive": "m-dormant",
+                       "Never": "m-never" };
+  /* The three-value vocabulary Reach used until 2026-09-28. Old shared links
+   * still carry it in `lf`, so it is translated on the way in. Old "Active"
+   * (365 days) stays Active, which is now the narrower 90-day bucket. */
+  var MEETUP_LEGACY = { "Dormant": "Inactive", "Not started": "Never" };
 
   /* ONE WORD, ONE MEANING, ACROSS BOTH LAYERS.
    *
-   * The upstream events dashboard calls a meetup "Active" if it met within 365
-   * days. This tool calls a PERSON active if a source saw them within 30. So
+   * The upstream events dashboard calls a meetup "Active" if it met within 90
+   * days (365 until its four-bucket rework, which is when the numbers below were
+   * counted). This tool calls a PERSON active if a source saw them within 30. So
    * 130 groups were drawn green and labelled Active while a person with the
    * identical gap was drawn red and labelled Dormant -- on the same map, at the
    * same time. Nobody can hold two definitions of "active" in their head while
    * reading one screen.
    *
    * The windows are NOT changed: they belong to the events dashboard, and
-   * diverging would mean two tools reporting different numbers for the same 708
+   * diverging would mean two tools reporting different numbers for the same
    * groups. Only the words change, and only where they are shown. The raw value
    * stays the facet key, so shared links and the upstream data are untouched. */
-  var MEETUP_LABEL = { "Active": "Meeting", "Dormant": "Stopped", "Not started": "Never met" };
+  var MEETUP_LABEL = { "Active": "Meeting", "Fading": "Fading", "Inactive": "Stopped",
+                       "Never": "Never met" };
   function meetupLabel(v) { return MEETUP_LABEL[v] || v; }
 
   /* A dot should say who it is before you commit a click to it.
@@ -1296,7 +1304,7 @@
       id: "meetups",
       label: "Meetups",
       title: "WordPress meetup groups, coloured by whether they are still meeting. " +
-             "From Maruti Mohanty's events dashboard.",
+             "From the WordPress Community Events Dashboard.",
       shape: "square",
       data: function () { return state.meetups; },
       key: function (m) { return "meetup:" + m.group; },
@@ -1327,13 +1335,13 @@
           m.lastEvent ? "last event " + esc(m.lastEvent) : "no events on record"
         ];
       },
-      quiet: function (m) { return m.status === "Dormant"; },
+      quiet: function (m) { return m.status === "Inactive"; },
       avatar: function () { return null; },
       select: function (m) { selectMeetup(m); },
       blockLabel: "Meetups nearby",
       note: function (recs) {
-        var d = recs.filter(function (h) { return h.p.status === "Dormant"; }).length;
-        return d ? "Dormant groups first — a group that has stopped meeting with " +
+        var d = recs.filter(function (h) { return h.p.status === "Inactive"; }).length;
+        return d ? "Stopped groups first — a group that has stopped meeting with " +
                    "someone active beside it is the clearest lead here." : "";
       },
       popup: function (m) {
@@ -1354,8 +1362,18 @@
         ];
       },
       clusterCls: function (kids) {
-        var dormant = kids.filter(function (k) { return k.options.rStatus === "Dormant"; }).length;
-        return dormant > kids.length / 2 ? "m-dormant" : "m-active";
+        // Same "worst majority" reading as the people clusters: mostly stopped
+        // reads stopped, mostly stopped-or-fading reads fading, else meeting.
+        // rStatus holds the DISPLAY label (statusLabel), not the raw value, so
+        // compare through meetupLabel. Comparing to the raw "Dormant" never
+        // matched once the labels were renamed, and every meetup cluster drew
+        // green until 2026-09-28.
+        var st = function (v) {
+          return kids.filter(function (k) { return k.options.rStatus === meetupLabel(v); }).length;
+        };
+        var stopped = st("Inactive"), fading = st("Fading");
+        if (stopped > kids.length / 2) return "m-dormant";
+        return stopped + fading > kids.length / 2 ? "m-fading" : "m-active";
       }
     },
     {
@@ -2678,9 +2696,9 @@
           ? "<dt>Organisers</dt><dd>" + mt.leaders.map(esc).join(", ") + "</dd>" : "") +
         (mt.url ? "<dt>Meetup</dt><dd>" + link(mt.url, "meetup.com") + "</dd>" : "") +
       "</dl>" +
-      '<p class="hint">Meeting means an event within 365 days, a window set by the ' +
-      'events dashboard ' +
-      "this comes from. It is a wider window than the one used for people.</p>" +
+      '<p class="hint">Meeting means an event within 90 days and Fading within a year, ' +
+      'windows set by the events dashboard ' +
+      "this comes from. Both are wider than the 30 days used for people.</p>" +
       '<div class="btnrow" style="margin-bottom:var(--s-3)">' + setAddButtonHTML("meetup", mt) +
         areaButtonHTML(mt.lat, mt.lng, mt.city || mt.group) + "</div>";
 
@@ -2694,7 +2712,7 @@
       nearFilterHTML(tally) +
       (tally.active ? '<p class="hint">' + tally.active + " active " +
         (tally.active === 1 ? "person" : "people") + " within " + state.radiusMi +
-        " miles" + (mt.status === "Dormant" ? " — any of them could restart this group." : ".") +
+        " miles" + (mt.status === "Inactive" ? " — any of them could restart this group." : ".") +
         "</p>" : "") +
       '<div class="nearlist">' + near.slice(0, 12).map(function (h) {
         return '<div class="row near" data-name="' + esc(h.p.name) + '" data-key="' +

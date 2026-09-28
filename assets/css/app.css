@@ -445,13 +445,16 @@ a.btn { text-decoration: none; display: inline-block; }
    colour-blind reader, which three colours alone would not be. */
 
 .pin.m-active  { background: var(--st-active); }
+.pin.m-fading  { background: var(--st-slowing); }
 .pin.m-dormant { background: var(--st-dormant); }
 .pin.m-never   { background: #9AA2AD; }
 
 .cluster.m-active  { background: var(--st-active); }
+.cluster.m-fading  { background: var(--st-slowing); }
 .cluster.m-dormant { background: var(--st-dormant); }
 
 .tag.m-active  { background: var(--good-soft); color: var(--st-active); }
+.tag.m-fading  { background: var(--warn-soft); color: var(--warn); }
 .tag.m-dormant { background: var(--crit-soft); color: var(--st-dormant); }
 .tag.m-never   { background: var(--tint);      color: var(--slate); }
 .row.near.is-meetup .nm { font-weight: 550; }
